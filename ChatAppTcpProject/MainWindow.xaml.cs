@@ -160,13 +160,19 @@ namespace ChatAppTcpProject
                         else if (frame.StartsWith("MSG:"))
                         {
                             string msg = frame.Substring(4);
-                            ChatList.Items.Add($"[Peer] {msg}");
+                            // Server now sends formatted messages like "[Username] message"
+                            ChatList.Items.Add(msg);
                             ScrollToEnd();
+                        }
+                        else if (frame.StartsWith("SYSTEM:"))
+                        {
+                            string notification = frame.Substring(7);
+                            AppendSystem(notification);
                         }
                         else
                         {
                             // Unknown or raw
-                            ChatList.Items.Add($"[Peer] {frame}");
+                            ChatList.Items.Add($"[Unknown] {frame}");
                             ScrollToEnd();
                         }
                     });
