@@ -18,7 +18,7 @@
             <TextBlock Text="Nickname:" VerticalAlignment="Center" Margin="0 0 4 0"/>
             <TextBox x:Name="NicknameTextBox" Width="100" Margin="0 0 8 0" ToolTip="Enter your chat nickname"/>
             <Button x:Name="ConnectButton" Width="90" Content="Connect" Click="ConnectButton_Click"/>
-            <Button x:Name="ReconnectButton" Width="90" Margin="4 0 0 0" Content="Reconnect" Click="ReconnectButton_Click" IsEnabled="False"/>
+            <Button x:Name="ReconnectButton" Width="90"dotn Margin="4 0 0 0" Content="Reconnect" Click="ReconnectButton_Click" IsEnabled="False"/>
             <TextBlock x:Name="StatusTextBlock" Margin="12 0 0 0" VerticalAlignment="Center" Foreground="Gray" Text="Disconnected"/>
         </StackPanel>
 
