@@ -3,30 +3,30 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="TCP Chat Client" Height="400" Width="560"
         Loaded="Window_Loaded" Closing="Window_Closing">
-    <Grid Margin="10">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+	<Grid Margin="10">
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="*"/>
+			<RowDefinition Height="Auto"/>
+		</Grid.RowDefinitions>
 
-        <StackPanel Orientation="Horizontal" Margin="0 0 0 8">
-            <TextBlock Text="Server:" VerticalAlignment="Center" Margin="0 0 4 0"/>
-            <TextBox x:Name="ServerHostTextBox" Width="120" Text="127.0.0.1" Margin="0 0 8 0"/>
-            <TextBlock Text="Port:" VerticalAlignment="Center" Margin="0 0 4 0"/>
-            <TextBox x:Name="ServerPortTextBox" Width="60" Text="8080" Margin="0 0 8 0"/>
-            <TextBlock Text="Nickname:" VerticalAlignment="Center" Margin="0 0 4 0"/>
-            <TextBox x:Name="NicknameTextBox" Width="100" Margin="0 0 8 0" ToolTip="Enter your chat nickname"/>
-            <Button x:Name="ConnectButton" Width="90" Content="Connect" Click="ConnectButton_Click"/>
-            <Button x:Name="ReconnectButton" Width="90"dotn Margin="4 0 0 0" Content="Reconnect" Click="ReconnectButton_Click" IsEnabled="False"/>
-            <TextBlock x:Name="StatusTextBlock" Margin="12 0 0 0" VerticalAlignment="Center" Foreground="Gray" Text="Disconnected"/>
-        </StackPanel>
+		<StackPanel Orientation="Horizontal" Margin="0 0 0 8">
+			<TextBlock Text="Server:" VerticalAlignment="Center" Margin="0 0 4 0"/>
+			<TextBox x:Name="ServerHostTextBox" Width="120" Text="127.0.0.1" Margin="0 0 8 0"/>
+			<TextBlock Text="Port:" VerticalAlignment="Center" Margin="0 0 4 0"/>
+			<TextBox x:Name="ServerPortTextBox" Width="60" Text="8080" Margin="0 0 8 0"/>
+			<TextBlock Text="Nickname:" VerticalAlignment="Center" Margin="0 0 4 0"/>
+			<TextBox x:Name="NicknameTextBox" Width="100" Margin="0 0 8 0" ToolTip="Enter your chat nickname"/>
+			<Button x:Name="ConnectButton" Width="90" Content="Connect" Click="ConnectButton_Click"/>
+			<Button x:Name="ReconnectButton" Width="90" Margin="4 0 0 0" Content="Reconnect" Click="ReconnectButton_Click" IsEnabled="False"/>
+			<TextBlock x:Name="StatusTextBlock" Margin="12 0 0 0" VerticalAlignment="Center" Foreground="Gray" Text="Disconnected"/>
+		</StackPanel>
 
-        <ListBox x:Name="ChatList" Grid.Row="1" />
+		<ListBox x:Name="ChatList" Grid.Row="1" />
 
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0 8 0 0">
-            <TextBox x:Name="MessageInput" Width="420" KeyDown="MessageInput_KeyDown" />
-            <Button x:Name="SendButton" Width="80" Content="Send" Margin="8 0 0 0" Click="SendButton_Click" IsEnabled="False"/>
-        </StackPanel>
-    </Grid>
+		<StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0 8 0 0">
+			<TextBox x:Name="MessageInput" Width="420" KeyDown="MessageInput_KeyDown" />
+			<Button x:Name="SendButton" Width="80" Content="Send" Margin="8 0 0 0" Click="SendButton_Click" IsEnabled="False"/>
+		</StackPanel>
+	</Grid>
 </Window>
