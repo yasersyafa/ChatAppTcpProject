@@ -6,7 +6,6 @@ using System.Text.Json;
 const int PORT = 8080;
 
 List<TcpClient> clients = [];
-Dictionary<TcpClient, string> clientNicknames = new();
 TcpListener listener = new(IPAddress.Any, PORT);
 
 listener.Start();
@@ -87,7 +86,6 @@ async Task HandleClientAsync(TcpClient client, List<TcpClient> tcpClients)
     {
         string disconnectedUser = clientNicknames.TryGetValue(client, out string? nick) ? nick : "Unknown";
         clients.Remove(client);
-        clientNicknames.Remove(client);
         client.Close();
         Console.WriteLine($"[SERVER] {disconnectedUser} disconnected.");
 

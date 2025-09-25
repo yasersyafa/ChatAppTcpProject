@@ -1,8 +1,10 @@
 ﻿using System;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -22,15 +24,18 @@ namespace ChatAppTcpProject
         private int _lastPort;
         private const int MaxFrameSize = 64 * 1024; // 64 KB safety limit
 
+        // User tracking for online users list
+        public ObservableCollection<string> OnlineUsers { get; set; } = new ObservableCollection<string>();
+
         public MainWindow()
         {
             InitializeComponent();
+            UsersList.ItemsSource = OnlineUsers;
         }
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            // Optional auto-connect
-            // await ConnectAsync();
+            // optional auto-connect
         }
 
         private async void ConnectButton_Click(object sender, RoutedEventArgs e)
@@ -105,14 +110,21 @@ namespace ChatAppTcpProject
 
         private async Task SendNicknameHandshakeAsync()
         {
-            if (_stream == null) return;
-            if (_handshakeSent) return;
+            if (_stream == null || _handshakeSent) return;
 
             string nick = NicknameTextBox.Text.Trim();
             if (string.IsNullOrEmpty(nick)) return;
 
-            // Protocol: First frame announces nickname with type tag.
-            await SendFrameAsync($"NICK:{nick}");
+            var joinMsg = new ChatMessage
+            {
+                Type = "join",
+                From = nick,
+                Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+            };
+
+            string json = JsonSerializer.Serialize(joinMsg);
+            await SendFrameAsync(json);
+
             _handshakeSent = true;
             AppendSystem($"Handshake sent as '{nick}'");
         }
@@ -125,7 +137,7 @@ namespace ChatAppTcpProject
                 _stream?.Close();
                 _client?.Close();
             }
-            catch { /* ignore */ }
+            catch { }
             finally
             {
                 _connected = false;
@@ -135,6 +147,7 @@ namespace ChatAppTcpProject
                 ReconnectButton.IsEnabled = !string.IsNullOrWhiteSpace(_lastHost);
                 SetStatus("Disconnected", Colors.Gray);
                 AppendSystem("Disconnected.");
+                ClearUsersList();
             }
             await Task.CompletedTask;
         }
@@ -148,32 +161,39 @@ namespace ChatAppTcpProject
                 while (!token.IsCancellationRequested)
                 {
                     string frame = await ReadFrameAsync(_stream, token);
-                    if (frame == string.Empty) break; // remote closed gracefully
+                    if (frame == string.Empty) break;
+
+                    var msg = JsonSerializer.Deserialize<ChatMessage>(frame);
+                    if (msg == null) continue;
 
                     Dispatcher.Invoke(() =>
                     {
-                        if (frame.StartsWith("NICK:"))
+                        switch (msg.Type)
                         {
-                            string nick = frame.Substring(5);
-                            AppendSystem($"Peer identified as '{nick}'");
-                        }
-                        else if (frame.StartsWith("MSG:"))
-                        {
-                            string msg = frame.Substring(4);
-                            // Server now sends formatted messages like "[Username] message"
-                            ChatList.Items.Add(msg);
-                            ScrollToEnd();
-                        }
-                        else if (frame.StartsWith("SYSTEM:"))
-                        {
-                            string notification = frame.Substring(7);
-                            AppendSystem(notification);
-                        }
-                        else
-                        {
-                            // Unknown or raw
-                            ChatList.Items.Add($"[Unknown] {frame}");
-                            ScrollToEnd();
+                            case "sys":
+                                AppendSystem(msg.Text ?? "");
+                                // Parse system messages for user join/leave events
+                                ParseSystemMessage(msg.Text ?? "");
+                                break;
+
+                            case "msg":
+                                ChatList.Items.Add($"[{msg.From}] {msg.Text}");
+                                ScrollToEnd();
+                                // Add user to list if not already present
+                                AddUserToList(msg.From ?? "");
+                                break;
+
+                            case "pm":
+                                ChatList.Items.Add($"[PM from {msg.From}] {msg.Text}");
+                                ScrollToEnd();
+                                // Add user to list if not already present
+                                AddUserToList(msg.From ?? "");
+                                break;
+
+                            default:
+                                ChatList.Items.Add($"[Unknown] {frame}");
+                                ScrollToEnd();
+                                break;
                         }
                     });
                 }
@@ -205,7 +225,42 @@ namespace ChatAppTcpProject
 
             try
             {
-                await SendFrameAsync($"MSG:{text}");
+                string nick = NicknameTextBox.Text.Trim();
+
+                ChatMessage msg;
+                if (text.StartsWith("/w "))
+                {
+                    // Format: /w target pesan
+                    var parts = text.Split(' ', 3, StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length < 3)
+                    {
+                        AppendSystem("Usage: /w <user> <message>");
+                        return;
+                    }
+
+                    msg = new ChatMessage
+                    {
+                        Type = "pm",
+                        From = nick,
+                        To = parts[1],
+                        Text = parts[2],
+                        Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                    };
+                }
+                else
+                {
+                    msg = new ChatMessage
+                    {
+                        Type = "msg",
+                        From = nick,
+                        Text = text,
+                        Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                    };
+                }
+
+                string json = JsonSerializer.Serialize(msg);
+                await SendFrameAsync(json);
+
                 ChatList.Items.Add($"[You] {text}");
                 ScrollToEnd();
                 MessageInput.Clear();
@@ -218,7 +273,7 @@ namespace ChatAppTcpProject
             }
         }
 
-        // Frame sending: 4-byte big-endian length + UTF8 payload
+        // === Frame Handling ===
         private async Task SendFrameAsync(string payload)
         {
             if (_stream == null) return;
@@ -260,6 +315,7 @@ namespace ChatAppTcpProject
             }
         }
 
+        // === UI Helpers ===
         private void MessageInput_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Shift) == 0)
@@ -293,5 +349,73 @@ namespace ChatAppTcpProject
         {
             await DisconnectAsync();
         }
+
+        // === User Management Methods ===
+        private void AddUserToList(string username)
+        {
+            if (!string.IsNullOrWhiteSpace(username) && !OnlineUsers.Contains(username))
+            {
+                OnlineUsers.Add(username);
+            }
+        }
+
+        private void RemoveUserFromList(string username)
+        {
+            if (OnlineUsers.Contains(username))
+            {
+                OnlineUsers.Remove(username);
+            }
+        }
+
+        private void ParseSystemMessage(string systemMessage)
+        {
+            if (string.IsNullOrWhiteSpace(systemMessage)) return;
+
+            // Parse "Users online: Alice, Bob, Charlie"
+            if (systemMessage.StartsWith("Users online:"))
+            {
+                OnlineUsers.Clear();
+                var usersPart = systemMessage.Substring("Users online:".Length).Trim();
+                if (!string.IsNullOrWhiteSpace(usersPart))
+                {
+                    var users = usersPart.Split(',', StringSplitOptions.RemoveEmptyEntries);
+                    foreach (var user in users)
+                    {
+                        var cleanUser = user.Trim();
+                        if (!string.IsNullOrWhiteSpace(cleanUser))
+                        {
+                            OnlineUsers.Add(cleanUser);
+                        }
+                    }
+                }
+            }
+            // Parse "Alice joined the chat"
+            else if (systemMessage.Contains(" joined the chat"))
+            {
+                var username = systemMessage.Replace(" joined the chat", "").Trim();
+                AddUserToList(username);
+            }
+            // Parse "Alice left the chat"
+            else if (systemMessage.Contains(" left the chat"))
+            {
+                var username = systemMessage.Replace(" left the chat", "").Trim();
+                RemoveUserFromList(username);
+            }
+        }
+
+        private void ClearUsersList()
+        {
+            OnlineUsers.Clear();
+        }
+    }
+
+    // === DTO for JSON messages ===
+    public class ChatMessage
+    {
+        public string? Type { get; set; }
+        public string? From { get; set; }
+        public string? To { get; set; }
+        public string? Text { get; set; }
+        public long Ts { get; set; }
     }
 }
