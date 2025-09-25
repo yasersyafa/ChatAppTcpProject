@@ -6,6 +6,7 @@ using System.Text.Json;
 const int PORT = 8080;
 
 List<TcpClient> clients = [];
+Dictionary<TcpClient, string> clientNicknames = [];
 TcpListener listener = new(IPAddress.Any, PORT);
 
 listener.Start();
@@ -86,6 +87,7 @@ async Task HandleClientAsync(TcpClient client, List<TcpClient> tcpClients)
     {
         string disconnectedUser = clientNicknames.TryGetValue(client, out string? nick) ? nick : "Unknown";
         clients.Remove(client);
+        clientNicknames.Remove(client);
         client.Close();
         Console.WriteLine($"[SERVER] {disconnectedUser} disconnected.");
 
@@ -216,6 +218,13 @@ async Task ReadExactAsync(NetworkStream stream, byte[] buffer, int offset, int c
         total += read;
     }
 }
+
+List<string> GetOnlineUsers()
+{
+    // Ambil semua nickname dari client yang masih tersimpan
+    return clientNicknames.Values.ToList();
+}
+
 
 // === ChatMessage DTO ===
 public class ChatMessage
