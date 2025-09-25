@@ -6,6 +6,7 @@ using System.Text.Json;
 const int PORT = 8080;
 
 List<TcpClient> clients = [];
+Dictionary<TcpClient, string> clientNicknames = new();
 TcpListener listener = new(IPAddress.Any, PORT);
 
 listener.Start();
