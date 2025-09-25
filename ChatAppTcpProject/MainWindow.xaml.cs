@@ -99,13 +99,6 @@ namespace ChatAppTcpProject
                 SetStatus("Connected", Colors.Green);
                 AppendSystem($"Connected to {host}:{port}");
 
-                // Add yourself to the online users list
-                string currentUser = NicknameTextBox.Text.Trim();
-                if (!string.IsNullOrWhiteSpace(currentUser))
-                {
-                    AddUserToList(currentUser);
-                }
-
                 await SendNicknameHandshakeAsync();
 
                 _ = Task.Run(() => ReceiveLoopAsync(_cts.Token));
@@ -432,7 +425,7 @@ namespace ChatAppTcpProject
                 RemoveUserFromList(username);
             }
             // Parse welcome message for first user
-            else if (systemMessage.Contains("Welcome") && systemMessage.Contains("You are the first user online"))
+            else if (systemMessage.Contains("You are the first user online"))
             {
                 // For first user, just add yourself
                 OnlineUsers.Clear();
