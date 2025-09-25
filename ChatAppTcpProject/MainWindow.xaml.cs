@@ -77,6 +77,9 @@ namespace ChatAppTcpProject
                 return;
             }
 
+            // Clear users list to prevent duplicates from reconnections
+            ClearUsersList();
+
             _client = new TcpClient();
             _cts = new CancellationTokenSource();
 
@@ -353,7 +356,14 @@ namespace ChatAppTcpProject
         // === User Management Methods ===
         private void AddUserToList(string username)
         {
-            if (!string.IsNullOrWhiteSpace(username) && !OnlineUsers.Contains(username))
+            if (string.IsNullOrWhiteSpace(username)) return;
+            
+            // Don't add yourself through this method (you're added during connection)
+            string currentUser = NicknameTextBox?.Text?.Trim() ?? "";
+            if (username.Equals(currentUser, StringComparison.OrdinalIgnoreCase)) return;
+            
+            // Prevent duplicates
+            if (!OnlineUsers.Contains(username))
             {
                 OnlineUsers.Add(username);
             }
@@ -376,15 +386,28 @@ namespace ChatAppTcpProject
             {
                 OnlineUsers.Clear();
                 var usersPart = systemMessage.Substring("Users online:".Length).Trim();
+                
+                // Add yourself first (current user)
+                string currentUser = NicknameTextBox?.Text?.Trim() ?? "";
+                if (!string.IsNullOrWhiteSpace(currentUser))
+                {
+                    OnlineUsers.Add(currentUser);
+                }
+                
+                // Then add other users
                 if (!string.IsNullOrWhiteSpace(usersPart))
                 {
                     var users = usersPart.Split(',', StringSplitOptions.RemoveEmptyEntries);
                     foreach (var user in users)
                     {
                         var cleanUser = user.Trim();
-                        if (!string.IsNullOrWhiteSpace(cleanUser))
+                        if (!string.IsNullOrWhiteSpace(cleanUser) && cleanUser != currentUser)
                         {
-                            OnlineUsers.Add(cleanUser);
+                            // Prevent duplicates
+                            if (!OnlineUsers.Contains(cleanUser))
+                            {
+                                OnlineUsers.Add(cleanUser);
+                            }
                         }
                     }
                 }
@@ -400,6 +423,17 @@ namespace ChatAppTcpProject
             {
                 var username = systemMessage.Replace(" left the chat", "").Trim();
                 RemoveUserFromList(username);
+            }
+            // Parse welcome message for first user
+            else if (systemMessage.Contains("You are the first user online"))
+            {
+                // For first user, just add yourself
+                OnlineUsers.Clear();
+                string currentUser = NicknameTextBox?.Text?.Trim() ?? "";
+                if (!string.IsNullOrWhiteSpace(currentUser))
+                {
+                    OnlineUsers.Add(currentUser);
+                }
             }
         }
 
