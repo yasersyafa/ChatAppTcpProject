@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -23,9 +24,13 @@ namespace ChatAppTcpProject
         private int _lastPort;
         private const int MaxFrameSize = 64 * 1024; // 64 KB safety limit
 
+        // User tracking for online users list
+        public ObservableCollection<string> OnlineUsers { get; set; } = new ObservableCollection<string>();
+
         public MainWindow()
         {
             InitializeComponent();
+            UsersList.ItemsSource = OnlineUsers;
         }
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -142,6 +147,7 @@ namespace ChatAppTcpProject
                 ReconnectButton.IsEnabled = !string.IsNullOrWhiteSpace(_lastHost);
                 SetStatus("Disconnected", Colors.Gray);
                 AppendSystem("Disconnected.");
+                ClearUsersList();
             }
             await Task.CompletedTask;
         }
@@ -166,16 +172,22 @@ namespace ChatAppTcpProject
                         {
                             case "sys":
                                 AppendSystem(msg.Text ?? "");
+                                // Parse system messages for user join/leave events
+                                ParseSystemMessage(msg.Text ?? "");
                                 break;
 
                             case "msg":
                                 ChatList.Items.Add($"[{msg.From}] {msg.Text}");
                                 ScrollToEnd();
+                                // Add user to list if not already present
+                                AddUserToList(msg.From ?? "");
                                 break;
 
                             case "pm":
                                 ChatList.Items.Add($"[PM from {msg.From}] {msg.Text}");
                                 ScrollToEnd();
+                                // Add user to list if not already present
+                                AddUserToList(msg.From ?? "");
                                 break;
 
                             default:
@@ -336,6 +348,64 @@ namespace ChatAppTcpProject
         private async void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
         {
             await DisconnectAsync();
+        }
+
+        // === User Management Methods ===
+        private void AddUserToList(string username)
+        {
+            if (!string.IsNullOrWhiteSpace(username) && !OnlineUsers.Contains(username))
+            {
+                OnlineUsers.Add(username);
+            }
+        }
+
+        private void RemoveUserFromList(string username)
+        {
+            if (OnlineUsers.Contains(username))
+            {
+                OnlineUsers.Remove(username);
+            }
+        }
+
+        private void ParseSystemMessage(string systemMessage)
+        {
+            if (string.IsNullOrWhiteSpace(systemMessage)) return;
+
+            // Parse "Users online: Alice, Bob, Charlie"
+            if (systemMessage.StartsWith("Users online:"))
+            {
+                OnlineUsers.Clear();
+                var usersPart = systemMessage.Substring("Users online:".Length).Trim();
+                if (!string.IsNullOrWhiteSpace(usersPart))
+                {
+                    var users = usersPart.Split(',', StringSplitOptions.RemoveEmptyEntries);
+                    foreach (var user in users)
+                    {
+                        var cleanUser = user.Trim();
+                        if (!string.IsNullOrWhiteSpace(cleanUser))
+                        {
+                            OnlineUsers.Add(cleanUser);
+                        }
+                    }
+                }
+            }
+            // Parse "Alice joined the chat"
+            else if (systemMessage.Contains(" joined the chat"))
+            {
+                var username = systemMessage.Replace(" joined the chat", "").Trim();
+                AddUserToList(username);
+            }
+            // Parse "Alice left the chat"
+            else if (systemMessage.Contains(" left the chat"))
+            {
+                var username = systemMessage.Replace(" left the chat", "").Trim();
+                RemoveUserFromList(username);
+            }
+        }
+
+        private void ClearUsersList()
+        {
+            OnlineUsers.Clear();
         }
     }
 
