@@ -54,6 +54,9 @@ async Task HandleClientAsync(TcpClient client, List<TcpClient> tcpClients)
                         Text = $"{msg.From} joined the chat",
                         Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
                     }, client, tcpClients);
+
+                    // broadcast updated user list to all existing clients (except new one)
+                    await BroadcastUpdatedUserListToExistingClients(client, tcpClients);
                     break;
 
                 case "msg":
@@ -87,17 +90,22 @@ async Task HandleClientAsync(TcpClient client, List<TcpClient> tcpClients)
     {
         string disconnectedUser = clientNicknames.TryGetValue(client, out string? nick) ? nick : "Unknown";
         clients.Remove(client);
+        clientNicknames.Remove(client);
         client.Close();
         Console.WriteLine($"[SERVER] {disconnectedUser} disconnected.");
 
         if (disconnectedUser != "Unknown")
         {
+            // Broadcast leave message
             await BroadcastAsync(new ChatMessage
             {
                 Type = "sys",
                 Text = $"{disconnectedUser} left the chat",
                 Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
             }, client, tcpClients);
+
+            // Broadcast updated user list to remaining clients
+            await BroadcastUpdatedUserListToRemainingClients(tcpClients);
         }
     }
 }
@@ -177,6 +185,80 @@ async Task SendUserListToNewClient(TcpClient newClient, string? newClientNicknam
     {
         Console.WriteLine($"[ERROR] Failed to send user list: {ex.Message}");
     }
+}
+
+// Broadcast updated user list to existing clients when new user joins
+async Task BroadcastUpdatedUserListToExistingClients(TcpClient newClient, List<TcpClient> clients)
+{
+    // Get all users including the new one
+    var allUsers = clientNicknames.Select(kvp => kvp.Value).ToList();
+    
+    if (allUsers.Count <= 1) return; // No need to broadcast if only 1 user
+
+    var sysMsg = new ChatMessage
+    {
+        Type = "sys", 
+        Text = $"Users online: {string.Join(", ", allUsers)}",
+        Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+    };
+
+    string json = JsonSerializer.Serialize(sysMsg);
+    byte[] frameData = CreateFrame(json);
+
+    // Send to all clients EXCEPT the new one (they already got their list)
+    foreach (var client in clients.ToList())
+    {
+        if (client == newClient) continue;
+        
+        try
+        {
+            await client.GetStream().WriteAsync(frameData);
+        }
+        catch
+        {
+            clients.Remove(client);
+            clientNicknames.Remove(client);
+        }
+    }
+
+    Console.WriteLine($"[SERVER] Broadcasted updated user list: {string.Join(", ", allUsers)}");
+}
+
+// Broadcast updated user list to remaining clients when user leaves
+async Task BroadcastUpdatedUserListToRemainingClients(List<TcpClient> clients)
+{
+    if (clients.Count == 0) return; // No clients left
+
+    var remainingUsers = clientNicknames.Select(kvp => kvp.Value).ToList();
+    
+    string userListText = remainingUsers.Count > 0 
+        ? $"Users online: {string.Join(", ", remainingUsers)}"
+        : "No users online";
+
+    var sysMsg = new ChatMessage
+    {
+        Type = "sys",
+        Text = userListText,
+        Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+    };
+
+    string json = JsonSerializer.Serialize(sysMsg);
+    byte[] frameData = CreateFrame(json);
+
+    foreach (var client in clients.ToList())
+    {
+        try
+        {
+            await client.GetStream().WriteAsync(frameData);
+        }
+        catch
+        {
+            clients.Remove(client);
+            clientNicknames.Remove(client);
+        }
+    }
+
+    Console.WriteLine($"[SERVER] Broadcasted updated user list after disconnect: {string.Join(", ", remainingUsers)}");
 }
 
 // === Framing (same as client) ===
