@@ -9,6 +9,7 @@ const int PORT = 8080;
 List<TcpClient> clients = [];
 Dictionary<TcpClient, string> clientNicknames = [];
 HashSet<string> usedNicknames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+object clientsLock = new object();
 TcpListener listener = new(IPAddress.Any, PORT);
 
 listener.Start();
@@ -20,7 +21,10 @@ _ = Task.Run(async () => await LoggingService.CleanupOldLogsAsync());
 while (true)
 {
     TcpClient client = await listener.AcceptTcpClientAsync();
-    clients.Add(client);
+    lock (clientsLock)
+    {
+        clients.Add(client);
+    }
     LoggingService.LogConnection(client.Client.RemoteEndPoint?.ToString() ?? "Unknown", "Client connected");
 
     _ = HandleClientAsync(client, clients);
@@ -47,11 +51,15 @@ async Task HandleClientAsync(TcpClient client, List<TcpClient> tcpClients)
             {
                 case "join":
                     string originalRequestedName = msg.From ?? "Unknown";
-                    string validatedUsername = ValidateAndEnsureUniqueUsername(originalRequestedName, client);
+                    string validatedUsername;
                     
-                    // Add to used nicknames set
-                    usedNicknames.Add(validatedUsername);
-                    clientNicknames[client] = validatedUsername;
+                    lock (clientsLock)
+                    {
+                        validatedUsername = ValidateAndEnsureUniqueUsername(originalRequestedName, client);
+                        // Add to used nicknames set
+                        usedNicknames.Add(validatedUsername);
+                        clientNicknames[client] = validatedUsername;
+                    }
                     
                     LoggingService.LogInfo($"User '{validatedUsername}' joined (requested: '{originalRequestedName}') from {client.Client.RemoteEndPoint}");
 
@@ -110,14 +118,18 @@ async Task HandleClientAsync(TcpClient client, List<TcpClient> tcpClients)
     }
     finally
     {
-        string disconnectedUser = clientNicknames.TryGetValue(client, out string? nick) ? nick : "Unknown";
-        clients.Remove(client);
-        clientNicknames.Remove(client);
-        
-        // Remove from used nicknames set
-        if (disconnectedUser != "Unknown")
+        string disconnectedUser = "Unknown";
+        lock (clientsLock)
         {
-            usedNicknames.Remove(disconnectedUser);
+            disconnectedUser = clientNicknames.TryGetValue(client, out string? nick) ? nick : "Unknown";
+            clients.Remove(client);
+            clientNicknames.Remove(client);
+            
+            // Remove from used nicknames set
+            if (disconnectedUser != "Unknown")
+            {
+                usedNicknames.Remove(disconnectedUser);
+            }
         }
         
         client.Close();
@@ -222,7 +234,13 @@ async Task BroadcastAsync(ChatMessage msg, TcpClient sender, List<TcpClient> cli
     string json = JsonSerializer.Serialize(msg);
     byte[] frameData = CreateFrame(json);
 
-    foreach (var client in clients.ToList())
+    List<TcpClient> clientsCopy;
+    lock (clientsLock)
+    {
+        clientsCopy = clients.ToList();
+    }
+
+    foreach (var client in clientsCopy)
     {
         if (client == sender) continue;
         try
@@ -231,8 +249,11 @@ async Task BroadcastAsync(ChatMessage msg, TcpClient sender, List<TcpClient> cli
         }
         catch
         {
-            clients.Remove(client);
-            clientNicknames.Remove(client);
+            lock (clientsLock)
+            {
+                clients.Remove(client);
+                clientNicknames.Remove(client);
+            }
         }
     }
 
@@ -245,7 +266,12 @@ async Task SendPrivateAsync(ChatMessage msg, TcpClient sender, List<TcpClient> c
     string? targetUser = msg.To;
     if (string.IsNullOrEmpty(targetUser)) return;
 
-    var targetClient = clientNicknames.FirstOrDefault(kvp => kvp.Value == targetUser).Key;
+    TcpClient? targetClient;
+    lock (clientsLock)
+    {
+        targetClient = clientNicknames.FirstOrDefault(kvp => kvp.Value == targetUser).Key;
+    }
+    
     if (targetClient == null) return;
 
     string json = JsonSerializer.Serialize(msg);
@@ -258,8 +284,11 @@ async Task SendPrivateAsync(ChatMessage msg, TcpClient sender, List<TcpClient> c
     }
     catch
     {
-        clients.Remove(targetClient);
-        clientNicknames.Remove(targetClient);
+        lock (clientsLock)
+        {
+            clients.Remove(targetClient);
+            clientNicknames.Remove(targetClient);
+        }
     }
 }
 
@@ -312,7 +341,11 @@ async Task BroadcastStopTypingIndicatorAsync(ChatMessage msg, TcpClient sender, 
 // Send list of users to new client
 async Task SendUserListToNewClient(TcpClient newClient, string? newClientNickname)
 {
-    var existingUsers = clientNicknames.Where(kvp => kvp.Key != newClient).Select(kvp => kvp.Value).ToList();
+    List<string> existingUsers;
+    lock (clientsLock)
+    {
+        existingUsers = clientNicknames.Where(kvp => kvp.Key != newClient).Select(kvp => kvp.Value).ToList();
+    }
 
     var sysMsg = new ChatMessage
     {
@@ -340,8 +373,15 @@ async Task SendUserListToNewClient(TcpClient newClient, string? newClientNicknam
 // Broadcast updated user list to existing clients when new user joins
 async Task BroadcastUpdatedUserListToExistingClients(TcpClient newClient, List<TcpClient> clients)
 {
-    // Get all users including the new one
-    var allUsers = clientNicknames.Select(kvp => kvp.Value).ToList();
+    List<string> allUsers;
+    List<TcpClient> clientsCopy;
+    
+    lock (clientsLock)
+    {
+        // Get all users including the new one
+        allUsers = clientNicknames.Select(kvp => kvp.Value).ToList();
+        clientsCopy = clients.ToList();
+    }
     
     if (allUsers.Count <= 1) return; // No need to broadcast if only 1 user
 
@@ -356,7 +396,7 @@ async Task BroadcastUpdatedUserListToExistingClients(TcpClient newClient, List<T
     byte[] frameData = CreateFrame(json);
 
     // Send to all clients EXCEPT the new one (they already got their list)
-    foreach (var client in clients.ToList())
+    foreach (var client in clientsCopy)
     {
         if (client == newClient) continue;
         
@@ -366,8 +406,11 @@ async Task BroadcastUpdatedUserListToExistingClients(TcpClient newClient, List<T
         }
         catch
         {
-            clients.Remove(client);
-            clientNicknames.Remove(client);
+            lock (clientsLock)
+            {
+                clients.Remove(client);
+                clientNicknames.Remove(client);
+            }
         }
     }
 
@@ -377,9 +420,15 @@ async Task BroadcastUpdatedUserListToExistingClients(TcpClient newClient, List<T
 // Broadcast updated user list to remaining clients when user leaves
 async Task BroadcastUpdatedUserListToRemainingClients(List<TcpClient> clients)
 {
-    if (clients.Count == 0) return; // No clients left
-
-    var remainingUsers = clientNicknames.Select(kvp => kvp.Value).ToList();
+    List<TcpClient> clientsCopy;
+    List<string> remainingUsers;
+    
+    lock (clientsLock)
+    {
+        if (clients.Count == 0) return; // No clients left
+        clientsCopy = clients.ToList();
+        remainingUsers = clientNicknames.Select(kvp => kvp.Value).ToList();
+    }
     
     string userListText = remainingUsers.Count > 0 
         ? $"Users online: {string.Join(", ", remainingUsers)}"
@@ -395,7 +444,7 @@ async Task BroadcastUpdatedUserListToRemainingClients(List<TcpClient> clients)
     string json = JsonSerializer.Serialize(sysMsg);
     byte[] frameData = CreateFrame(json);
 
-    foreach (var client in clients.ToList())
+    foreach (var client in clientsCopy)
     {
         try
         {
@@ -403,8 +452,11 @@ async Task BroadcastUpdatedUserListToRemainingClients(List<TcpClient> clients)
         }
         catch
         {
-            clients.Remove(client);
-            clientNicknames.Remove(client);
+            lock (clientsLock)
+            {
+                clients.Remove(client);
+                clientNicknames.Remove(client);
+            }
         }
     }
 
