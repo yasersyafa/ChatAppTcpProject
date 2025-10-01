@@ -30,7 +30,6 @@ namespace ChatAppTcpProject
         // Typing indicator tracking
         private Dictionary<string, DateTime> _typingUsers = new Dictionary<string, DateTime>();
         private Timer? _typingTimer;
-        private Timer? _stopTypingTimer;
         private const int TypingTimeoutMs = 3000; // 3 seconds
         
         // Theme management
@@ -45,7 +44,7 @@ namespace ChatAppTcpProject
             _typingTimer = new Timer(CheckTypingTimeout, null, Timeout.Infinite, 1000);
         }
 
-        private async void Window_Loaded(object sender, RoutedEventArgs e)
+        private void Window_Loaded(object sender, RoutedEventArgs e)
         {
             // optional auto-connect
         }
@@ -360,7 +359,8 @@ namespace ChatAppTcpProject
                 await SendStopTypingIndicatorAsync();
                 await SendCurrentMessageAsync();
             }
-            else if (e.Key != Key.Enter && e.Key != Key.Shift && e.Key != Key.Ctrl && e.Key != Key.Alt)
+            else if (e.Key != Key.Enter && e.Key != Key.LeftShift && e.Key != Key.RightShift && 
+                     e.Key != Key.LeftCtrl && e.Key != Key.RightCtrl && e.Key != Key.LeftAlt && e.Key != Key.RightAlt)
             {
                 // Send typing indicator for any other key press
                 _ = SendTypingIndicatorAsync();
