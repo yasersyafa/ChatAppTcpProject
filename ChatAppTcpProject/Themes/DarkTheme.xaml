@@ -181,9 +181,6 @@
                             Padding="12,8"
                             BorderBrush="{StaticResource BorderBrush}"
                             BorderThickness="1">
-                        <Border.Effect>
-                            <DropShadowEffect Color="Black" BlurRadius="2" ShadowDepth="1" Opacity="0.2"/>
-                        </Border.Effect>
                         <ContentPresenter/>
                         <Border.Style>
                             <Style TargetType="Border">

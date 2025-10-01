@@ -30,7 +30,7 @@ namespace ChatAppTcpProject
         // Typing indicator tracking
         private Dictionary<string, DateTime> _typingUsers = new Dictionary<string, DateTime>();
         private Timer? _typingTimer;
-        private const int TypingTimeoutMs = 3000; // 3 seconds
+        private const int TypingTimeoutMs = 3000; // 3 seconds timeout
         
         // Theme management
         private bool _isDarkTheme = false;
@@ -41,7 +41,7 @@ namespace ChatAppTcpProject
             UsersList.ItemsSource = OnlineUsers;
             
             // Initialize typing timer
-            _typingTimer = new Timer(CheckTypingTimeout, null, Timeout.Infinite, 1000);
+            _typingTimer = new Timer(CheckTypingTimeout, null, 1000, 1000);
         }
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
@@ -208,6 +208,12 @@ namespace ChatAppTcpProject
                                 ScrollToEnd();
                                 // Add user to list if not already present
                                 AddUserToList(msg.From ?? "");
+                                // Clear typing indicator for this user since they sent a message
+                                if (msg.From != null)
+                                {
+                                    _typingUsers.Remove(msg.From);
+                                    UpdateTypingDisplay();
+                                }
                                 break;
 
                             case "pm":
@@ -215,6 +221,12 @@ namespace ChatAppTcpProject
                                 ScrollToEnd();
                                 // Add user to list if not already present
                                 AddUserToList(msg.From ?? "");
+                                // Clear typing indicator for this user since they sent a message
+                                if (msg.From != null)
+                                {
+                                    _typingUsers.Remove(msg.From);
+                                    UpdateTypingDisplay();
+                                }
                                 break;
 
                             case "typing":
@@ -523,6 +535,9 @@ namespace ChatAppTcpProject
 
             _typingUsers[username] = DateTime.Now;
             UpdateTypingDisplay();
+            
+            // Ensure timer is running
+            _typingTimer?.Change(1000, 1000);
         }
 
         private void HandleStopTypingIndicator(string username)
@@ -537,41 +552,28 @@ namespace ChatAppTcpProject
         {
             if (_typingUsers.Count == 0)
             {
-                // Remove any existing typing indicators from chat
-                var typingItems = ChatList.Items.Cast<object>()
-                    .Where(item => item.ToString()?.Contains(" is typing...") == true)
-                    .ToList();
-                
-                foreach (var item in typingItems)
-                {
-                    ChatList.Items.Remove(item);
-                }
+                // Hide typing status area
+                TypingStatusBorder.Visibility = Visibility.Collapsed;
                 return;
             }
 
-            // Remove old typing indicators
-            var oldTypingItems = ChatList.Items.Cast<object>()
-                .Where(item => item.ToString()?.Contains(" is typing...") == true)
-                .ToList();
+            // Show typing status area and update text
+            TypingStatusBorder.Visibility = Visibility.Visible;
             
-            foreach (var item in oldTypingItems)
-            {
-                ChatList.Items.Remove(item);
-            }
-
-            // Add new typing indicators
             if (_typingUsers.Count == 1)
             {
                 var user = _typingUsers.Keys.First();
-                ChatList.Items.Add($"[System] {user} is typing...");
+                TypingStatusText.Text = $"{user} is typing";
             }
-            else if (_typingUsers.Count > 1)
+            else if (_typingUsers.Count == 2)
             {
-                var users = string.Join(", ", _typingUsers.Keys);
-                ChatList.Items.Add($"[System] {users} are typing...");
+                var users = _typingUsers.Keys.ToArray();
+                TypingStatusText.Text = $"{users[0]} and {users[1]} are typing";
             }
-
-            ScrollToEnd();
+            else if (_typingUsers.Count > 2)
+            {
+                TypingStatusText.Text = $"{_typingUsers.Count} people are typing";
+            }
         }
 
         private void CheckTypingTimeout(object? state)

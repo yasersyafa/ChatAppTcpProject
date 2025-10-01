@@ -160,6 +160,7 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         
                         <!-- Chat Header -->
@@ -184,6 +185,83 @@
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
                                  ItemContainerStyle="{StaticResource ChatMessageItemStyle}"/>
+                        
+                        <!-- Typing Status Area -->
+                        <Border x:Name="TypingStatusBorder" Grid.Row="2" 
+                                Background="{StaticResource SecondaryBackgroundBrush}"
+                                BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="0,1,0,0"
+                                Padding="15,8"
+                                Visibility="Collapsed"
+                                Opacity="0">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Style.Triggers>
+                                        <Trigger Property="Visibility" Value="Visible">
+                                            <Trigger.EnterActions>
+                                                <BeginStoryboard>
+                                                    <Storyboard>
+                                                        <DoubleAnimation 
+                                                            Storyboard.TargetProperty="Opacity"
+                                                            From="0" To="1" Duration="0:0:0.3">
+                                                            <DoubleAnimation.EasingFunction>
+                                                                <PowerEase EasingMode="EaseOut"/>
+                                                            </DoubleAnimation.EasingFunction>
+                                                        </DoubleAnimation>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </Trigger.EnterActions>
+                                            <Trigger.ExitActions>
+                                                <BeginStoryboard>
+                                                    <Storyboard>
+                                                        <DoubleAnimation 
+                                                            Storyboard.TargetProperty="Opacity"
+                                                            From="1" To="0" Duration="0:0:0.2"/>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </Trigger.ExitActions>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="✏️" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock x:Name="TypingStatusText" 
+                                           FontSize="12" 
+                                           FontStyle="Italic"
+                                           Foreground="{StaticResource SystemMessageBrush}"
+                                           VerticalAlignment="Center"
+                                           Text="Someone is typing..."/>
+                                <!-- Animated dots -->
+                                <TextBlock x:Name="TypingDots" 
+                                           FontSize="12" 
+                                           Foreground="{StaticResource AccentBrush}"
+                                           VerticalAlignment="Center"
+                                           Margin="4,0,0,0">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value=""/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Visibility, ElementName=TypingStatusBorder}" Value="Visible">
+                                                    <DataTrigger.EnterActions>
+                                                        <BeginStoryboard>
+                                                            <Storyboard RepeatBehavior="Forever">
+                                                                <StringAnimationUsingKeyFrames Storyboard.TargetProperty="Text" Duration="0:0:1.2">
+                                                                    <DiscreteStringKeyFrame Value="" KeyTime="0:0:0"/>
+                                                                    <DiscreteStringKeyFrame Value="." KeyTime="0:0:0.3"/>
+                                                                    <DiscreteStringKeyFrame Value=".." KeyTime="0:0:0.6"/>
+                                                                    <DiscreteStringKeyFrame Value="..." KeyTime="0:0:0.9"/>
+                                                                </StringAnimationUsingKeyFrames>
+                                                            </Storyboard>
+                                                        </BeginStoryboard>
+                                                    </DataTrigger.EnterActions>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
                     </Grid>
                 </Border>
                 
@@ -236,8 +314,8 @@
                                                  VerticalAlignment="Center" Margin="0,0,8,0"/>
                                         <TextBlock Text="{Binding}" 
                                                    VerticalAlignment="Center" 
-                                                   FontSize="12" 
-                                                   FontWeight="Medium"
+                                                   FontSize="13" 
+                                                   FontWeight="SemiBold"
                                                    Foreground="{StaticResource ForegroundBrush}"/>
                                     </StackPanel>
                                 </DataTemplate>
