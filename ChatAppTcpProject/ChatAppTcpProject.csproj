@@ -8,4 +8,14 @@
     <UseWPF>true</UseWPF>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Exclude UserInterfaceUpdates.xaml from compilation as it's a documentation/snippet file -->
+    <Page Remove="UserInterfaceUpdates.xaml" />
+    <None Include="UserInterfaceUpdates.xaml" />
+    
+    <!-- Exclude test files from main application project -->
+    <Compile Remove="PrivateMessageParserTests.cs" />
+    <None Include="PrivateMessageParserTests.cs" />
+  </ItemGroup>
+
 </Project>
