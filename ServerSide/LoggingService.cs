@@ -2,9 +2,7 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 
-namespace ServerSide
-{
-    public static class LoggingService
+public static class LoggingService
     {
         private static readonly string LogDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
         private static readonly string LogFileName = $"server_{DateTime.Now:yyyyMMdd}.log";
@@ -71,18 +69,21 @@ namespace ServerSide
         {
             try
             {
-                var cutoffDate = DateTime.Now.AddDays(-daysToKeep);
-                var logFiles = Directory.GetFiles(LogDirectory, "server_*.log");
-
-                foreach (var logFile in logFiles)
+                await Task.Run(() =>
                 {
-                    var fileInfo = new FileInfo(logFile);
-                    if (fileInfo.CreationTime < cutoffDate)
+                    var cutoffDate = DateTime.Now.AddDays(-daysToKeep);
+                    var logFiles = Directory.GetFiles(LogDirectory, "server_*.log");
+
+                    foreach (var logFile in logFiles)
                     {
-                        File.Delete(logFile);
-                        LogInfo($"Deleted old log file: {Path.GetFileName(logFile)}");
+                        var fileInfo = new FileInfo(logFile);
+                        if (fileInfo.CreationTime < cutoffDate)
+                        {
+                            File.Delete(logFile);
+                            LogInfo($"Deleted old log file: {Path.GetFileName(logFile)}");
+                        }
                     }
-                }
+                });
             }
             catch (Exception ex)
             {
@@ -90,4 +91,3 @@ namespace ServerSide
             }
         }
     }
-}

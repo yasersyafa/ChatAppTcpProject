@@ -142,7 +142,7 @@ async Task HandleClientAsync(TcpClient client, List<TcpClient> tcpClients)
 // === Helper Methods ===
 
 // Validate and ensure unique username
-private static string ValidateAndEnsureUniqueUsername(string? requestedUsername, TcpClient client)
+string ValidateAndEnsureUniqueUsername(string? requestedUsername, TcpClient client)
 {
     if (string.IsNullOrWhiteSpace(requestedUsername))
     {
@@ -174,7 +174,7 @@ private static string ValidateAndEnsureUniqueUsername(string? requestedUsername,
 }
 
 // Generate unique username by appending number
-private static string GenerateUniqueUsername(string baseName)
+string GenerateUniqueUsername(string baseName)
 {
     string baseClean = Regex.Replace(baseName.Trim(), @"\s+", " ");
     string candidate = baseClean;
@@ -450,11 +450,6 @@ async Task ReadExactAsync(NetworkStream stream, byte[] buffer, int offset, int c
     }
 }
 
-List<string> GetOnlineUsers()
-{
-    // Ambil semua nickname dari client yang masih tersimpan
-    return clientNicknames.Values.ToList();
-}
 
 
 // === ChatMessage DTO ===
