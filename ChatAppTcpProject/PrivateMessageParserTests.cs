@@ -10,10 +10,10 @@ namespace ChatAppTcpProject.Tests
     public class PrivateMessageParserTests
     {
         [TestMethod]
-        public void ParsePrivateMessage_QuotedNickname_ReturnsCorrectValues()
+        public void ParsePrivateMessage_CurlyBraceNickname_ReturnsCorrectValues()
         {
             // Arrange
-            string input = "/w \"John Doe\" Hello there!";
+            string input = "/w {John Doe} Hello there!";
             
             // Act
             var result = PrivateMessageParser.ParsePrivateMessage(input);
@@ -43,7 +43,7 @@ namespace ChatAppTcpProject.Tests
         public void ParsePrivateMessage_ComplexNickname_ReturnsCorrectValues()
         {
             // Arrange
-            string input = "/w \"Dr. Mary-Jane Smith\" How are you?";
+            string input = "/w {Dr. Mary-Jane Smith} How are you?";
             
             // Act
             var result = PrivateMessageParser.ParsePrivateMessage(input);
@@ -68,10 +68,10 @@ namespace ChatAppTcpProject.Tests
         }
 
         [TestMethod]
-        public void ParsePrivateMessage_UnclosedQuote_ReturnsNull()
+        public void ParsePrivateMessage_UnclosedBrace_ReturnsNull()
         {
             // Arrange
-            string input = "/w \"John Doe Hello there!";
+            string input = "/w {John Doe Hello there!";
             
             // Act
             var result = PrivateMessageParser.ParsePrivateMessage(input);
@@ -84,7 +84,7 @@ namespace ChatAppTcpProject.Tests
         public void ParsePrivateMessage_EmptyMessage_ReturnsNull()
         {
             // Arrange
-            string input = "/w \"John Doe\" ";
+            string input = "/w {John Doe} ";
             
             // Act
             var result = PrivateMessageParser.ParsePrivateMessage(input);
@@ -97,7 +97,7 @@ namespace ChatAppTcpProject.Tests
         public void IsValidPrivateMessageCommand_ValidInput_ReturnsTrue()
         {
             // Arrange
-            string input = "/w \"John Doe\" Hello there!";
+            string input = "/w {John Doe} Hello there!";
             
             // Act
             bool result = PrivateMessageParser.IsValidPrivateMessageCommand(input);

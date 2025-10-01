@@ -265,11 +265,42 @@ namespace ChatAppTcpProject
                 ChatMessage msg;
                 if (text.StartsWith("/w "))
                 {
-                    // Format: /w target pesan
-                    var parts = text.Split(' ', 3, StringSplitOptions.RemoveEmptyEntries);
-                    if (parts.Length < 3)
+                    // Format: /w {target} message atau /w target message
+                    string remainingText = text.Substring(3).Trim();
+                    
+                    string targetUser;
+                    string message;
+                    
+                    if (remainingText.StartsWith("{"))
                     {
-                        AppendSystem("Usage: /w <user> <message>");
+                        // Curly brace nickname format: /w {nickname} message
+                        int endBraceIndex = remainingText.IndexOf('}', 1);
+                        if (endBraceIndex == -1)
+                        {
+                            AppendSystem("Usage: /w {<user>} <message>");
+                            return;
+                        }
+                        
+                        targetUser = remainingText.Substring(1, endBraceIndex - 1).Trim();
+                        message = remainingText.Substring(endBraceIndex + 1).Trim();
+                    }
+                    else
+                    {
+                        // Regular format: /w target message
+                        int firstSpaceIndex = remainingText.IndexOf(' ');
+                        if (firstSpaceIndex == -1)
+                        {
+                            AppendSystem("Usage: /w <user> <message>");
+                            return;
+                        }
+                        
+                        targetUser = remainingText.Substring(0, firstSpaceIndex).Trim();
+                        message = remainingText.Substring(firstSpaceIndex + 1).Trim();
+                    }
+                    
+                    if (string.IsNullOrEmpty(targetUser) || string.IsNullOrEmpty(message))
+                    {
+                        AppendSystem("Usage: /w <user> <message> or /w {<user>} <message>");
                         return;
                     }
 
@@ -277,8 +308,8 @@ namespace ChatAppTcpProject
                     {
                         Type = "pm",
                         From = nick,
-                        To = parts[1],
-                        Text = parts[2],
+                        To = targetUser,
+                        Text = message,
                         Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
                     };
                 }

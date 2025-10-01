@@ -27,7 +27,7 @@ namespace ChatAppTcpProject
                 
                 // Focus message input and set up PM
                 MessageInput.Focus();
-                MessageInput.Text = $"/w \"{selectedUser}\" ";
+                MessageInput.Text = $"/w {{{selectedUser}}} ";
                 MessageInput.CaretIndex = MessageInput.Text.Length;
             }
         }
@@ -49,7 +49,7 @@ namespace ChatAppTcpProject
                 }
                 
                 MessageInput.Focus();
-                MessageInput.Text = $"/w \"{selectedUser}\" ";
+                MessageInput.Text = $"/w {{{selectedUser}}} ";
                 MessageInput.CaretIndex = MessageInput.Text.Length;
             }
         }

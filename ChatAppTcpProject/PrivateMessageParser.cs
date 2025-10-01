@@ -20,15 +20,15 @@ namespace ChatAppTcpProject
             string targetUser;
             string message;
             
-            if (remainingText.StartsWith("\""))
+            if (remainingText.StartsWith("{"))
             {
-                // Quoted nickname format: /w "nickname" message
-                int endQuoteIndex = remainingText.IndexOf('"', 1);
-                if (endQuoteIndex == -1)
+                // Curly brace nickname format: /w {nickname} message
+                int endBraceIndex = remainingText.IndexOf('}', 1);
+                if (endBraceIndex == -1)
                     return null;
                 
-                targetUser = remainingText.Substring(1, endQuoteIndex - 1).Trim();
-                message = remainingText.Substring(endQuoteIndex + 1).Trim();
+                targetUser = remainingText.Substring(1, endBraceIndex - 1).Trim();
+                message = remainingText.Substring(endBraceIndex + 1).Trim();
             }
             else
             {
@@ -63,7 +63,7 @@ namespace ChatAppTcpProject
         /// <returns>Usage message string</returns>
         public static string GetUsageMessage()
         {
-            return "Usage: /w <user> <message> or /w \"<user>\" <message>";
+            return "Usage: /w <user> <message> or /w {<user>} <message>";
         }
     }
 }
