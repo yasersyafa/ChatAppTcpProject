@@ -659,13 +659,13 @@ namespace ChatAppTcpProject
             var newTheme = new ResourceDictionary();
             if (_isDarkTheme)
             {
-                newTheme.Source = new Uri("Themes/DarkTheme.xaml", UriKind.Relative);
+                newTheme.Source = new Uri("./Themes/DarkTheme.xaml", UriKind.Relative);
                 ThemeToggleButton.Content = "☀️";
                 ThemeToggleButton.ToolTip = "Switch to Light Theme";
             }
             else
             {
-                newTheme.Source = new Uri("Themes/LightTheme.xaml", UriKind.Relative);
+                newTheme.Source = new Uri("./Themes/LightTheme.xaml", UriKind.Relative);
                 ThemeToggleButton.Content = "🌙";
                 ThemeToggleButton.ToolTip = "Switch to Dark Theme";
             }
