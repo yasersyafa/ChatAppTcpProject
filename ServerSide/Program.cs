@@ -2,21 +2,26 @@
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 const int PORT = 8080;
 
 List<TcpClient> clients = [];
 Dictionary<TcpClient, string> clientNicknames = [];
+HashSet<string> usedNicknames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 TcpListener listener = new(IPAddress.Any, PORT);
 
 listener.Start();
-Console.WriteLine($"[SERVER] Listening on port: {PORT}");
+LoggingService.LogInfo($"Server started and listening on port: {PORT}");
+
+// Cleanup old log files on startup
+_ = Task.Run(async () => await LoggingService.CleanupOldLogsAsync());
 
 while (true)
 {
     TcpClient client = await listener.AcceptTcpClientAsync();
     clients.Add(client);
-    Console.WriteLine("[SERVER] New client connected");
+    LoggingService.LogConnection(client.Client.RemoteEndPoint?.ToString() ?? "Unknown", "Client connected");
 
     _ = HandleClientAsync(client, clients);
 }
@@ -33,7 +38,7 @@ async Task HandleClientAsync(TcpClient client, List<TcpClient> tcpClients)
             string frame = await ReadFrameAsync(stream, MaxFrameSize);
             if (frame == string.Empty) break;
 
-            Console.WriteLine($"[SERVER] Received JSON: {frame}");
+            LoggingService.LogInfo($"Received message from {client.Client.RemoteEndPoint}: {frame}");
 
             var msg = JsonSerializer.Deserialize<ChatMessage>(frame);
             if (msg == null) continue;
@@ -41,17 +46,26 @@ async Task HandleClientAsync(TcpClient client, List<TcpClient> tcpClients)
             switch (msg.Type)
             {
                 case "join":
-                    clientNicknames[client] = msg.From ?? "Unknown";
-                    Console.WriteLine($"[SERVER] {msg.From} joined.");
+                    string originalRequestedName = msg.From ?? "Unknown";
+                    string validatedUsername = ValidateAndEnsureUniqueUsername(originalRequestedName, client);
+                    
+                    // Add to used nicknames set
+                    usedNicknames.Add(validatedUsername);
+                    clientNicknames[client] = validatedUsername;
+                    
+                    LoggingService.LogInfo($"User '{validatedUsername}' joined (requested: '{originalRequestedName}') from {client.Client.RemoteEndPoint}");
+
+                    // Send username confirmation to client
+                    await SendUsernameConfirmationAsync(client, originalRequestedName, validatedUsername);
 
                     // kirim user list ke client baru
-                    await SendUserListToNewClient(client, msg.From);
+                    await SendUserListToNewClient(client, validatedUsername);
 
                     // broadcast join ke semua client lain
                     await BroadcastAsync(new ChatMessage
                     {
                         Type = "sys",
-                        Text = $"{msg.From} joined the chat",
+                        Text = $"{validatedUsername} joined the chat",
                         Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
                     }, client, tcpClients);
 
@@ -76,23 +90,38 @@ async Task HandleClientAsync(TcpClient client, List<TcpClient> tcpClients)
                     }
                     break;
 
+                case "typing":
+                    await BroadcastTypingIndicatorAsync(msg, client, tcpClients);
+                    break;
+
+                case "stop_typing":
+                    await BroadcastStopTypingIndicatorAsync(msg, client, tcpClients);
+                    break;
+
                 default:
-                    Console.WriteLine($"[SERVER] Unknown message type: {msg.Type}");
+                    LoggingService.LogWarning($"Unknown message type received: {msg.Type} from {client.Client.RemoteEndPoint}");
                     break;
             }
         }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[ERROR] {ex.Message}");
+        LoggingService.LogError($"Error handling client {client.Client.RemoteEndPoint}", ex);
     }
     finally
     {
         string disconnectedUser = clientNicknames.TryGetValue(client, out string? nick) ? nick : "Unknown";
         clients.Remove(client);
         clientNicknames.Remove(client);
+        
+        // Remove from used nicknames set
+        if (disconnectedUser != "Unknown")
+        {
+            usedNicknames.Remove(disconnectedUser);
+        }
+        
         client.Close();
-        Console.WriteLine($"[SERVER] {disconnectedUser} disconnected.");
+        LoggingService.LogConnection($"{disconnectedUser} ({client.Client.RemoteEndPoint})", "Client disconnected");
 
         if (disconnectedUser != "Unknown")
         {
@@ -111,6 +140,81 @@ async Task HandleClientAsync(TcpClient client, List<TcpClient> tcpClients)
 }
 
 // === Helper Methods ===
+
+// Validate and ensure unique username
+private static string ValidateAndEnsureUniqueUsername(string? requestedUsername, TcpClient client)
+{
+    if (string.IsNullOrWhiteSpace(requestedUsername))
+    {
+        return GenerateUniqueUsername("User");
+    }
+
+    // Clean username: remove leading/trailing spaces, replace multiple spaces with single space
+    string cleanUsername = Regex.Replace(requestedUsername.Trim(), @"\s+", " ");
+    
+    // Validate username: alphanumeric, spaces, hyphens, underscores only
+    if (!Regex.IsMatch(cleanUsername, @"^[a-zA-Z0-9\s\-_]+$"))
+    {
+        return GenerateUniqueUsername("User");
+    }
+
+    // Check length (3-20 characters)
+    if (cleanUsername.Length < 3 || cleanUsername.Length > 20)
+    {
+        return GenerateUniqueUsername("User");
+    }
+
+    // Check if username is already taken
+    if (usedNicknames.Contains(cleanUsername))
+    {
+        return GenerateUniqueUsername(cleanUsername);
+    }
+
+    return cleanUsername;
+}
+
+// Generate unique username by appending number
+private static string GenerateUniqueUsername(string baseName)
+{
+    string baseClean = Regex.Replace(baseName.Trim(), @"\s+", " ");
+    string candidate = baseClean;
+    int counter = 1;
+
+    while (usedNicknames.Contains(candidate))
+    {
+        candidate = $"{baseClean}{counter}";
+        counter++;
+    }
+
+    return candidate;
+}
+
+// Send username confirmation to client
+async Task SendUsernameConfirmationAsync(TcpClient client, string originalRequestedName, string validatedUsername)
+{
+    var confirmationMsg = new ChatMessage
+    {
+        Type = "username_confirmed",
+        From = validatedUsername,
+        Text = originalRequestedName != validatedUsername 
+            ? $"Username '{originalRequestedName}' was not available. You are now known as '{validatedUsername}'."
+            : $"Welcome, {validatedUsername}!",
+        Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+    };
+
+    string json = JsonSerializer.Serialize(confirmationMsg);
+    byte[] frameData = CreateFrame(json);
+
+    try
+    {
+        await client.GetStream().WriteAsync(frameData);
+        LoggingService.LogInfo($"Sent username confirmation to {validatedUsername}");
+    }
+    catch (Exception ex)
+    {
+        LoggingService.LogError($"Failed to send username confirmation to {validatedUsername}", ex);
+    }
+}
 
 // Broadcast message to all clients except sender
 async Task BroadcastAsync(ChatMessage msg, TcpClient sender, List<TcpClient> clients)
@@ -132,7 +236,7 @@ async Task BroadcastAsync(ChatMessage msg, TcpClient sender, List<TcpClient> cli
         }
     }
 
-    Console.WriteLine($"[SERVER] Broadcasted: {json}");
+    LoggingService.LogInfo($"Broadcasted message: {json}");
 }
 
 // Send private message
@@ -150,12 +254,58 @@ async Task SendPrivateAsync(ChatMessage msg, TcpClient sender, List<TcpClient> c
     try
     {
         await targetClient.GetStream().WriteAsync(frameData);
-        Console.WriteLine($"[SERVER] PM from {msg.From} to {msg.To}: {msg.Text}");
+        LoggingService.LogInfo($"Private message from {msg.From} to {msg.To}: {msg.Text}");
     }
     catch
     {
         clients.Remove(targetClient);
         clientNicknames.Remove(targetClient);
+    }
+}
+
+// Broadcast typing indicator
+async Task BroadcastTypingIndicatorAsync(ChatMessage msg, TcpClient sender, List<TcpClient> clients)
+{
+    var typingMsg = new ChatMessage
+    {
+        Type = "typing",
+        From = msg.From,
+        To = msg.To, // For private chat typing
+        Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+    };
+
+    if (!string.IsNullOrEmpty(msg.To))
+    {
+        // Private chat typing - only send to target user
+        await SendPrivateAsync(typingMsg, sender, clients);
+    }
+    else
+    {
+        // General chat typing - broadcast to all except sender
+        await BroadcastAsync(typingMsg, sender, clients);
+    }
+}
+
+// Broadcast stop typing indicator
+async Task BroadcastStopTypingIndicatorAsync(ChatMessage msg, TcpClient sender, List<TcpClient> clients)
+{
+    var stopTypingMsg = new ChatMessage
+    {
+        Type = "stop_typing",
+        From = msg.From,
+        To = msg.To, // For private chat typing
+        Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+    };
+
+    if (!string.IsNullOrEmpty(msg.To))
+    {
+        // Private chat stop typing - only send to target user
+        await SendPrivateAsync(stopTypingMsg, sender, clients);
+    }
+    else
+    {
+        // General chat stop typing - broadcast to all except sender
+        await BroadcastAsync(stopTypingMsg, sender, clients);
     }
 }
 
@@ -179,11 +329,11 @@ async Task SendUserListToNewClient(TcpClient newClient, string? newClientNicknam
     try
     {
         await newClient.GetStream().WriteAsync(frameData);
-        Console.WriteLine($"[SERVER] Sent user list to {newClientNickname}");
+        LoggingService.LogInfo($"Sent user list to {newClientNickname}");
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[ERROR] Failed to send user list: {ex.Message}");
+        LoggingService.LogError($"Failed to send user list to {newClientNickname}", ex);
     }
 }
 
@@ -221,7 +371,7 @@ async Task BroadcastUpdatedUserListToExistingClients(TcpClient newClient, List<T
         }
     }
 
-    Console.WriteLine($"[SERVER] Broadcasted updated user list: {string.Join(", ", allUsers)}");
+    LoggingService.LogInfo($"Broadcasted updated user list: {string.Join(", ", allUsers)}");
 }
 
 // Broadcast updated user list to remaining clients when user leaves
@@ -258,7 +408,7 @@ async Task BroadcastUpdatedUserListToRemainingClients(List<TcpClient> clients)
         }
     }
 
-    Console.WriteLine($"[SERVER] Broadcasted updated user list after disconnect: {string.Join(", ", remainingUsers)}");
+    LoggingService.LogInfo($"Broadcasted updated user list after disconnect: {string.Join(", ", remainingUsers)}");
 }
 
 // === Framing (same as client) ===
@@ -310,7 +460,7 @@ List<string> GetOnlineUsers()
 // === ChatMessage DTO ===
 public class ChatMessage
 {
-    public string? Type { get; set; }   // msg, join, leave, pm, sys
+    public string? Type { get; set; }   // msg, join, leave, pm, sys, typing, stop_typing, username_confirmed
     public string? From { get; set; }
     public string? To { get; set; }
     public string? Text { get; set; }

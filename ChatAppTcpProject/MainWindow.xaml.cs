@@ -26,11 +26,23 @@ namespace ChatAppTcpProject
 
         // User tracking for online users list
         public ObservableCollection<string> OnlineUsers { get; set; } = new ObservableCollection<string>();
+        
+        // Typing indicator tracking
+        private Dictionary<string, DateTime> _typingUsers = new Dictionary<string, DateTime>();
+        private Timer? _typingTimer;
+        private Timer? _stopTypingTimer;
+        private const int TypingTimeoutMs = 3000; // 3 seconds
+        
+        // Theme management
+        private bool _isDarkTheme = false;
 
         public MainWindow()
         {
             InitializeComponent();
             UsersList.ItemsSource = OnlineUsers;
+            
+            // Initialize typing timer
+            _typingTimer = new Timer(CheckTypingTimeout, null, Timeout.Infinite, 1000);
         }
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -151,6 +163,10 @@ namespace ChatAppTcpProject
                 SetStatus("Disconnected", Colors.Gray);
                 AppendSystem("Disconnected.");
                 ClearUsersList();
+                
+                // Clear typing indicators
+                _typingUsers.Clear();
+                UpdateTypingDisplay();
             }
             await Task.CompletedTask;
         }
@@ -179,6 +195,15 @@ namespace ChatAppTcpProject
                                 ParseSystemMessage(msg.Text ?? "");
                                 break;
 
+                            case "username_confirmed":
+                                AppendSystem(msg.Text ?? "");
+                                // Update nickname if it was changed
+                                if (msg.From != null && msg.From != NicknameTextBox.Text.Trim())
+                                {
+                                    NicknameTextBox.Text = msg.From;
+                                }
+                                break;
+
                             case "msg":
                                 ChatList.Items.Add($"[{msg.From}] {msg.Text}");
                                 ScrollToEnd();
@@ -191,6 +216,14 @@ namespace ChatAppTcpProject
                                 ScrollToEnd();
                                 // Add user to list if not already present
                                 AddUserToList(msg.From ?? "");
+                                break;
+
+                            case "typing":
+                                HandleTypingIndicator(msg.From ?? "");
+                                break;
+
+                            case "stop_typing":
+                                HandleStopTypingIndicator(msg.From ?? "");
                                 break;
 
                             default:
@@ -319,12 +352,18 @@ namespace ChatAppTcpProject
         }
 
         // === UI Helpers ===
-        private void MessageInput_KeyDown(object sender, KeyEventArgs e)
+        private async void MessageInput_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Shift) == 0)
             {
                 e.Handled = true;
-                _ = SendCurrentMessageAsync();
+                await SendStopTypingIndicatorAsync();
+                await SendCurrentMessageAsync();
+            }
+            else if (e.Key != Key.Enter && e.Key != Key.Shift && e.Key != Key.Ctrl && e.Key != Key.Alt)
+            {
+                // Send typing indicator for any other key press
+                _ = SendTypingIndicatorAsync();
             }
         }
 
@@ -350,6 +389,7 @@ namespace ChatAppTcpProject
 
         private async void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
         {
+            _typingTimer?.Dispose();
             await DisconnectAsync();
         }
 
@@ -440,6 +480,189 @@ namespace ChatAppTcpProject
         private void ClearUsersList()
         {
             OnlineUsers.Clear();
+        }
+
+        // === Typing Indicator Methods ===
+        private void HandleTypingIndicator(string username)
+        {
+            if (string.IsNullOrWhiteSpace(username)) return;
+            
+            string currentUser = NicknameTextBox?.Text?.Trim() ?? "";
+            if (username.Equals(currentUser, StringComparison.OrdinalIgnoreCase)) return;
+
+            _typingUsers[username] = DateTime.Now;
+            UpdateTypingDisplay();
+        }
+
+        private void HandleStopTypingIndicator(string username)
+        {
+            if (string.IsNullOrWhiteSpace(username)) return;
+            
+            _typingUsers.Remove(username);
+            UpdateTypingDisplay();
+        }
+
+        private void UpdateTypingDisplay()
+        {
+            if (_typingUsers.Count == 0)
+            {
+                // Remove any existing typing indicators from chat
+                var typingItems = ChatList.Items.Cast<object>()
+                    .Where(item => item.ToString()?.Contains(" is typing...") == true)
+                    .ToList();
+                
+                foreach (var item in typingItems)
+                {
+                    ChatList.Items.Remove(item);
+                }
+                return;
+            }
+
+            // Remove old typing indicators
+            var oldTypingItems = ChatList.Items.Cast<object>()
+                .Where(item => item.ToString()?.Contains(" is typing...") == true)
+                .ToList();
+            
+            foreach (var item in oldTypingItems)
+            {
+                ChatList.Items.Remove(item);
+            }
+
+            // Add new typing indicators
+            if (_typingUsers.Count == 1)
+            {
+                var user = _typingUsers.Keys.First();
+                ChatList.Items.Add($"[System] {user} is typing...");
+            }
+            else if (_typingUsers.Count > 1)
+            {
+                var users = string.Join(", ", _typingUsers.Keys);
+                ChatList.Items.Add($"[System] {users} are typing...");
+            }
+
+            ScrollToEnd();
+        }
+
+        private void CheckTypingTimeout(object? state)
+        {
+            var now = DateTime.Now;
+            var expiredUsers = _typingUsers
+                .Where(kvp => (now - kvp.Value).TotalMilliseconds > TypingTimeoutMs)
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            if (expiredUsers.Count > 0)
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    foreach (var user in expiredUsers)
+                    {
+                        _typingUsers.Remove(user);
+                    }
+                    UpdateTypingDisplay();
+                });
+            }
+        }
+
+        private async Task SendTypingIndicatorAsync()
+        {
+            if (_stream == null || !_connected) return;
+
+            try
+            {
+                var typingMsg = new ChatMessage
+                {
+                    Type = "typing",
+                    From = NicknameTextBox.Text.Trim(),
+                    Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                };
+
+                string json = JsonSerializer.Serialize(typingMsg);
+                await SendFrameAsync(json);
+            }
+            catch (Exception ex)
+            {
+                AppendSystem($"Failed to send typing indicator: {ex.Message}");
+            }
+        }
+
+        private async Task SendStopTypingIndicatorAsync()
+        {
+            if (_stream == null || !_connected) return;
+
+            try
+            {
+                var stopTypingMsg = new ChatMessage
+                {
+                    Type = "stop_typing",
+                    From = NicknameTextBox.Text.Trim(),
+                    Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                };
+
+                string json = JsonSerializer.Serialize(stopTypingMsg);
+                await SendFrameAsync(json);
+            }
+            catch (Exception ex)
+            {
+                AppendSystem($"Failed to send stop typing indicator: {ex.Message}");
+            }
+        }
+
+        // === Theme Management Methods ===
+        private void ThemeToggleButton_Click(object sender, RoutedEventArgs e)
+        {
+            ToggleTheme();
+        }
+
+        private void ToggleTheme()
+        {
+            _isDarkTheme = !_isDarkTheme;
+            
+            var app = Application.Current;
+            var resources = app.Resources;
+            
+            // Clear existing merged dictionaries
+            resources.MergedDictionaries.Clear();
+            
+            // Load new theme
+            var newTheme = new ResourceDictionary();
+            if (_isDarkTheme)
+            {
+                newTheme.Source = new Uri("Themes/DarkTheme.xaml", UriKind.Relative);
+                ThemeToggleButton.Content = "☀️";
+                ThemeToggleButton.ToolTip = "Switch to Light Theme";
+            }
+            else
+            {
+                newTheme.Source = new Uri("Themes/LightTheme.xaml", UriKind.Relative);
+                ThemeToggleButton.Content = "🌙";
+                ThemeToggleButton.ToolTip = "Switch to Dark Theme";
+            }
+            
+            resources.MergedDictionaries.Add(newTheme);
+            
+            // Update status colors based on current connection state
+            UpdateStatusColor();
+        }
+
+        private void UpdateStatusColor()
+        {
+            if (StatusTextBlock.Text == "Connected")
+            {
+                SetStatus("Connected", Colors.Green);
+            }
+            else if (StatusTextBlock.Text == "Connecting...")
+            {
+                SetStatus("Connecting...", Colors.Orange);
+            }
+            else if (StatusTextBlock.Text == "Failed")
+            {
+                SetStatus("Failed", Colors.Red);
+            }
+            else
+            {
+                SetStatus("Disconnected", Colors.Gray);
+            }
         }
     }
 
