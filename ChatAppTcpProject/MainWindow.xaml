@@ -305,7 +305,14 @@
                                  BorderThickness="0"
                                  Padding="8"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                 ItemContainerStyle="{StaticResource UserListItemStyle}">
+                                 ItemContainerStyle="{StaticResource UserListItemStyle}"
+                                 MouseDoubleClick="UsersList_MouseDoubleClick">
+                            <ListBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Send Private Message" Click="SendPMContextMenu_Click"/>
+                                    <MenuItem Header="Copy Username" Click="CopyUsernameContextMenu_Click"/>
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal">
@@ -316,7 +323,9 @@
                                                    VerticalAlignment="Center" 
                                                    FontSize="13" 
                                                    FontWeight="SemiBold"
-                                                   Foreground="{StaticResource ForegroundBrush}"/>
+                                                   Foreground="{StaticResource ForegroundBrush}"
+                                                   Cursor="Hand" 
+                                                   ToolTip="Double-click or right-click for options"/>
                                     </StackPanel>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>

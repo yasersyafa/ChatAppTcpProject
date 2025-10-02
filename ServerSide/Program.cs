@@ -152,7 +152,15 @@ async Task HandleClientAsync(TcpClient client, List<TcpClient> tcpClients)
 
             // Broadcast updated user list to remaining clients
             LoggingService.LogInfo($"Broadcasting updated user list after {disconnectedUser} disconnect");
-            await BroadcastUpdatedUserListToRemainingClients(tcpClients);
+            
+            // Get remaining clients after disconnect
+            List<TcpClient> remainingClients;
+            lock (clientsLock)
+            {
+                remainingClients = clients.ToList();
+            }
+            
+            await BroadcastUpdatedUserListToRemainingClients(remainingClients);
         }
     }
 }
@@ -440,6 +448,8 @@ async Task BroadcastUpdatedUserListToRemainingClients(List<TcpClient> clients)
         ? $"Users online: {string.Join(", ", remainingUsers)}"
         : "No users online";
 
+    LoggingService.LogInfo($"Sending user list update to {clientsCopy.Count} clients: {userListText}");
+
     var sysMsg = new ChatMessage
     {
         Type = "sys",
@@ -455,6 +465,7 @@ async Task BroadcastUpdatedUserListToRemainingClients(List<TcpClient> clients)
         try
         {
             await client.GetStream().WriteAsync(frameData);
+            LoggingService.LogInfo($"Sent user list update to client: {client.Client.RemoteEndPoint}");
         }
         catch
         {
