@@ -139,27 +139,27 @@ async Task HandleClientAsync(TcpClient client, List<TcpClient> tcpClients)
         {
             LoggingService.LogInfo($"Broadcasting disconnect for user: {disconnectedUser}");
             
-            // Broadcast leave message
+            // Get remaining clients after disconnect (for broadcast)
+            List<TcpClient> remainingClients;
+            lock (clientsLock)
+            {
+                remainingClients = clients.ToList();
+                LoggingService.LogInfo($"Remaining clients count: {remainingClients.Count}");
+            }
+            
+            // Broadcast leave message to remaining clients
             await BroadcastAsync(new ChatMessage
             {
                 Type = "sys",
                 Text = $"{disconnectedUser} left the chat",
                 Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
-            }, client, tcpClients);
+            }, client, remainingClients);
 
             // Small delay to ensure leave message is processed first
             await Task.Delay(100);
 
             // Broadcast updated user list to remaining clients
             LoggingService.LogInfo($"Broadcasting updated user list after {disconnectedUser} disconnect");
-            
-            // Get remaining clients after disconnect
-            List<TcpClient> remainingClients;
-            lock (clientsLock)
-            {
-                remainingClients = clients.ToList();
-            }
-            
             await BroadcastUpdatedUserListToRemainingClients(remainingClients);
         }
     }
@@ -254,15 +254,26 @@ async Task BroadcastAsync(ChatMessage msg, TcpClient sender, List<TcpClient> cli
         clientsCopy = clients.ToList();
     }
 
+    LoggingService.LogInfo($"Broadcasting message type '{msg.Type}' to {clientsCopy.Count} clients");
+
+    int sentCount = 0;
     foreach (var client in clientsCopy)
     {
-        if (client == sender) continue;
+        if (client == sender)
+        {
+            LoggingService.LogInfo($"Skipping sender: {client.Client.RemoteEndPoint}");
+            continue;
+        }
+        
         try
         {
             await client.GetStream().WriteAsync(frameData);
+            sentCount++;
+            LoggingService.LogInfo($"Sent to client: {client.Client.RemoteEndPoint}");
         }
-        catch
+        catch (Exception ex)
         {
+            LoggingService.LogError($"Failed to send to client {client.Client.RemoteEndPoint}", ex);
             lock (clientsLock)
             {
                 clients.Remove(client);
@@ -270,8 +281,8 @@ async Task BroadcastAsync(ChatMessage msg, TcpClient sender, List<TcpClient> cli
             }
         }
     }
-
-    LoggingService.LogInfo($"Broadcasted message: {json}");
+    
+    LoggingService.LogInfo($"Broadcast complete. Sent to {sentCount} clients. Message: {json}");
 }
 
 // Send private message
