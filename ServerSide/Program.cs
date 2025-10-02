@@ -30,7 +30,7 @@ while (true)
     _ = HandleClientAsync(client, clients);
 }
 
-async Task HandleClientAsync(TcpClient client, List<TcpClient> tcpClients)
+async Task HandleClientAsync(TcpClient client, List<TcpClient> _unusedParameter)
 {
     var stream = client.GetStream();
     const int MaxFrameSize = 64 * 1024; // 64 KB safety limit
@@ -46,6 +46,13 @@ async Task HandleClientAsync(TcpClient client, List<TcpClient> tcpClients)
 
             var msg = JsonSerializer.Deserialize<ChatMessage>(frame);
             if (msg == null) continue;
+            
+            // Always get fresh copy of clients for broadcasting
+            List<TcpClient> currentClients;
+            lock (clientsLock)
+            {
+                currentClients = clients.ToList();
+            }
 
             switch (msg.Type)
             {
@@ -75,10 +82,10 @@ async Task HandleClientAsync(TcpClient client, List<TcpClient> tcpClients)
                         Type = "sys",
                         Text = $"{validatedUsername} joined the chat",
                         Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
-                    }, client, tcpClients);
+                    }, client, currentClients);
 
                     // broadcast updated user list to all existing clients (except new one)
-                    await BroadcastUpdatedUserListToExistingClients(client, tcpClients);
+                    await BroadcastUpdatedUserListToExistingClients(client, currentClients);
                     break;
 
                 case "msg":
@@ -88,22 +95,22 @@ async Task HandleClientAsync(TcpClient client, List<TcpClient> tcpClients)
                         From = msg.From,
                         Text = msg.Text,
                         Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
-                    }, client, tcpClients);
+                    }, client, currentClients);
                     break;
 
                 case "pm":
                     if (!string.IsNullOrEmpty(msg.To))
                     {
-                        await SendPrivateAsync(msg, client, tcpClients);
+                        await SendPrivateAsync(msg, client, currentClients);
                     }
                     break;
 
                 case "typing":
-                    await BroadcastTypingIndicatorAsync(msg, client, tcpClients);
+                    await BroadcastTypingIndicatorAsync(msg, client, currentClients);
                     break;
 
                 case "stop_typing":
-                    await BroadcastStopTypingIndicatorAsync(msg, client, tcpClients);
+                    await BroadcastStopTypingIndicatorAsync(msg, client, currentClients);
                     break;
 
                 default:
@@ -243,21 +250,15 @@ async Task SendUsernameConfirmationAsync(TcpClient client, string originalReques
 }
 
 // Broadcast message to all clients except sender
-async Task BroadcastAsync(ChatMessage msg, TcpClient sender, List<TcpClient> clients)
+async Task BroadcastAsync(ChatMessage msg, TcpClient sender, List<TcpClient> clientsToSend)
 {
     string json = JsonSerializer.Serialize(msg);
     byte[] frameData = CreateFrame(json);
 
-    List<TcpClient> clientsCopy;
-    lock (clientsLock)
-    {
-        clientsCopy = clients.ToList();
-    }
-
-    LoggingService.LogInfo($"Broadcasting message type '{msg.Type}' to {clientsCopy.Count} clients");
+    LoggingService.LogInfo($"Broadcasting message type '{msg.Type}' to {clientsToSend.Count} clients (excluding sender)");
 
     int sentCount = 0;
-    foreach (var client in clientsCopy)
+    foreach (var client in clientsToSend)
     {
         if (client == sender)
         {
@@ -269,20 +270,16 @@ async Task BroadcastAsync(ChatMessage msg, TcpClient sender, List<TcpClient> cli
         {
             await client.GetStream().WriteAsync(frameData);
             sentCount++;
-            LoggingService.LogInfo($"Sent to client: {client.Client.RemoteEndPoint}");
+            LoggingService.LogInfo($"✓ Sent to client: {client.Client.RemoteEndPoint}");
         }
         catch (Exception ex)
         {
-            LoggingService.LogError($"Failed to send to client {client.Client.RemoteEndPoint}", ex);
-            lock (clientsLock)
-            {
-                clients.Remove(client);
-                clientNicknames.Remove(client);
-            }
+            LoggingService.LogError($"✗ Failed to send to client {client.Client.RemoteEndPoint}", ex);
+            // Don't remove from list here, let HandleClientAsync handle cleanup
         }
     }
     
-    LoggingService.LogInfo($"Broadcast complete. Sent to {sentCount} clients. Message: {json}");
+    LoggingService.LogInfo($"Broadcast complete. Sent to {sentCount}/{clientsToSend.Count} clients. Message: {json}");
 }
 
 // Send private message

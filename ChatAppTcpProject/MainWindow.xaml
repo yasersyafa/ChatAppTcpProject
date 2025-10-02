@@ -21,11 +21,11 @@
         </Border.Effect>
         
         <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
             
             <!-- Header Section -->
             <Border Grid.Row="0" 
@@ -140,12 +140,12 @@
             
             <!-- Main Chat Area -->
             <Grid Grid.Row="1" Margin="20">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="8"/>
                     <ColumnDefinition Width="250"/>
-                </Grid.ColumnDefinitions>
-                
+        </Grid.ColumnDefinitions>
+
                 <!-- Chat Messages -->
                 <Border Grid.Column="0" 
                         Background="{StaticResource ChatBackgroundBrush}"
@@ -260,7 +260,7 @@
                                         </Style>
                                     </TextBlock.Style>
                                 </TextBlock>
-                            </StackPanel>
+        </StackPanel>
                         </Border>
                     </Grid>
                 </Border>
@@ -279,12 +279,12 @@
                         <DropShadowEffect Color="Black" BlurRadius="4" ShadowDepth="1" Opacity="0.1"/>
                     </Border.Effect>
                     
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-                        
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                
                         <!-- Users Header -->
                         <Border Grid.Row="0" 
                                 Background="{StaticResource HeaderGradientBrush}"
@@ -313,8 +313,8 @@
                                     <MenuItem Header="Copy Username" Click="CopyUsernameContextMenu_Click"/>
                                 </ContextMenu>
                             </ListBox.ContextMenu>
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
                                     <StackPanel Orientation="Horizontal">
                                         <Ellipse Width="10" Height="10" 
                                                  Fill="{StaticResource StatusConnectedBrush}" 
@@ -326,12 +326,12 @@
                                                    Foreground="{StaticResource ForegroundBrush}"
                                                    Cursor="Hand" 
                                                    ToolTip="Double-click or right-click for options"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </Grid>
-                </Border>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+        </Border>
             </Grid>
             
             <!-- Message Input Area -->
@@ -362,6 +362,6 @@
                             Style="{StaticResource ModernButtonStyle}"/>
                 </Grid>
             </Border>
-        </Grid>
+    </Grid>
     </Border>
 </Window>
