@@ -493,9 +493,9 @@ namespace ChatAppTcpProject
                 var usersPart = systemMessage.Substring("Users online:".Length).Trim();
                 
                 // Use Dispatcher to ensure thread safety for UI updates
+                OnlineUsers.Clear();
                 Dispatcher.Invoke(() =>
                 {
-                    OnlineUsers.Clear();
                     
                     // Add yourself first (current user)
                     string currentUser = NicknameTextBox?.Text?.Trim() ?? "";
@@ -558,9 +558,9 @@ namespace ChatAppTcpProject
 
         private void ClearUsersList()
         {
+            OnlineUsers.Clear();
             Dispatcher.Invoke(() =>
             {
-                OnlineUsers.Clear();
                 Console.WriteLine($"[DEBUG] Cleared user list. Count: {OnlineUsers.Count}");
             });
         }
