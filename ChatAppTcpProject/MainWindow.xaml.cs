@@ -445,29 +445,39 @@ namespace ChatAppTcpProject
             string currentUser = NicknameTextBox?.Text?.Trim() ?? "";
             if (username.Equals(currentUser, StringComparison.OrdinalIgnoreCase)) return;
             
-            // Prevent duplicates
-            if (!OnlineUsers.Contains(username))
+            // Use Dispatcher to ensure thread safety for UI updates
+            Dispatcher.Invoke(() =>
             {
-                OnlineUsers.Add(username);
-            }
+                // Prevent duplicates
+                if (!OnlineUsers.Contains(username))
+                {
+                    OnlineUsers.Add(username);
+                    Console.WriteLine($"[DEBUG] Added user to list: '{username}'. Total: {OnlineUsers.Count}");
+                }
+            });
         }
 
         private void RemoveUserFromList(string username)
         {
             Console.WriteLine($"[DEBUG] Attempting to remove user: '{username}'");
-            Console.WriteLine($"[DEBUG] Current users before removal: {string.Join(", ", OnlineUsers)}");
             
-            if (OnlineUsers.Contains(username))
+            // Use Dispatcher to ensure thread safety for UI updates
+            Dispatcher.Invoke(() =>
             {
-                OnlineUsers.Remove(username);
-                Console.WriteLine($"[DEBUG] Successfully removed user: '{username}'");
-            }
-            else
-            {
-                Console.WriteLine($"[DEBUG] User '{username}' not found in list");
-            }
-            
-            Console.WriteLine($"[DEBUG] Current users after removal: {string.Join(", ", OnlineUsers)}");
+                Console.WriteLine($"[DEBUG] Current users before removal: {string.Join(", ", OnlineUsers)}");
+                
+                if (OnlineUsers.Contains(username))
+                {
+                    OnlineUsers.Remove(username);
+                    Console.WriteLine($"[DEBUG] Successfully removed user: '{username}'. Total: {OnlineUsers.Count}");
+                }
+                else
+                {
+                    Console.WriteLine($"[DEBUG] User '{username}' not found in list");
+                }
+                
+                Console.WriteLine($"[DEBUG] Current users after removal: {string.Join(", ", OnlineUsers)}");
+            });
         }
 
         private void ParseSystemMessage(string systemMessage)
@@ -480,34 +490,39 @@ namespace ChatAppTcpProject
             // Parse "Users online: Alice, Bob, Charlie"
             if (systemMessage.StartsWith("Users online:"))
             {
-                OnlineUsers.Clear();
                 var usersPart = systemMessage.Substring("Users online:".Length).Trim();
                 
-                // Add yourself first (current user)
-                string currentUser = NicknameTextBox?.Text?.Trim() ?? "";
-                if (!string.IsNullOrWhiteSpace(currentUser))
+                // Use Dispatcher to ensure thread safety for UI updates
+                Dispatcher.Invoke(() =>
                 {
-                    OnlineUsers.Add(currentUser);
-                }
-                
-                // Then add other users
-                if (!string.IsNullOrWhiteSpace(usersPart))
-                {
-                    var users = usersPart.Split(',', StringSplitOptions.RemoveEmptyEntries);
-                    foreach (var user in users)
+                    OnlineUsers.Clear();
+                    
+                    // Add yourself first (current user)
+                    string currentUser = NicknameTextBox?.Text?.Trim() ?? "";
+                    if (!string.IsNullOrWhiteSpace(currentUser))
                     {
-                        var cleanUser = user.Trim();
-                        if (!string.IsNullOrWhiteSpace(cleanUser) && cleanUser != currentUser)
+                        OnlineUsers.Add(currentUser);
+                    }
+                    
+                    // Then add other users
+                    if (!string.IsNullOrWhiteSpace(usersPart))
+                    {
+                        var users = usersPart.Split(',', StringSplitOptions.RemoveEmptyEntries);
+                        foreach (var user in users)
                         {
-                            // Prevent duplicates
-                            if (!OnlineUsers.Contains(cleanUser))
+                            var cleanUser = user.Trim();
+                            if (!string.IsNullOrWhiteSpace(cleanUser) && cleanUser != currentUser)
                             {
-                                OnlineUsers.Add(cleanUser);
+                                // Prevent duplicates
+                                if (!OnlineUsers.Contains(cleanUser))
+                                {
+                                    OnlineUsers.Add(cleanUser);
+                                }
                             }
                         }
                     }
-                }
-                Console.WriteLine($"[DEBUG] Updated user list from 'Users online' message. Count: {OnlineUsers.Count}");
+                    Console.WriteLine($"[DEBUG] Updated user list from 'Users online' message. Count: {OnlineUsers.Count}");
+                });
             }
             // Parse "Alice joined the chat"
             else if (systemMessage.Contains(" joined the chat"))
@@ -526,20 +541,28 @@ namespace ChatAppTcpProject
             // Parse welcome message for first user
             else if (systemMessage.Contains("You are the first user online"))
             {
-                // For first user, just add yourself
-                OnlineUsers.Clear();
-                string currentUser = NicknameTextBox?.Text?.Trim() ?? "";
-                if (!string.IsNullOrWhiteSpace(currentUser))
+                // Use Dispatcher to ensure thread safety for UI updates
+                Dispatcher.Invoke(() =>
                 {
-                    OnlineUsers.Add(currentUser);
-                }
-                Console.WriteLine($"[DEBUG] First user online. Count: {OnlineUsers.Count}");
+                    // For first user, just add yourself
+                    OnlineUsers.Clear();
+                    string currentUser = NicknameTextBox?.Text?.Trim() ?? "";
+                    if (!string.IsNullOrWhiteSpace(currentUser))
+                    {
+                        OnlineUsers.Add(currentUser);
+                    }
+                    Console.WriteLine($"[DEBUG] First user online. Count: {OnlineUsers.Count}");
+                });
             }
         }
 
         private void ClearUsersList()
         {
-            OnlineUsers.Clear();
+            Dispatcher.Invoke(() =>
+            {
+                OnlineUsers.Clear();
+                Console.WriteLine($"[DEBUG] Cleared user list. Count: {OnlineUsers.Count}");
+            });
         }
 
         // === Typing Indicator Methods ===
