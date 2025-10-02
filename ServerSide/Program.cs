@@ -355,17 +355,18 @@ async Task BroadcastStopTypingIndicatorAsync(ChatMessage msg, TcpClient sender, 
 // Send list of users to new client
 async Task SendUserListToNewClient(TcpClient newClient, string? newClientNickname)
 {
-    List<string> existingUsers;
+    List<string> allUsers;
     lock (clientsLock)
     {
-        existingUsers = clientNicknames.Where(kvp => kvp.Key != newClient).Select(kvp => kvp.Value).ToList();
+        // Get ALL users including the new client
+        allUsers = clientNicknames.Select(kvp => kvp.Value).ToList();
     }
 
     var sysMsg = new ChatMessage
     {
         Type = "sys",
-        Text = existingUsers.Count > 0
-            ? $"Users online: {string.Join(", ", existingUsers)}"
+        Text = allUsers.Count > 0
+            ? $"Users online: {string.Join(", ", allUsers)}"
             : "You are the first user online.",
         Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
     };
@@ -376,7 +377,7 @@ async Task SendUserListToNewClient(TcpClient newClient, string? newClientNicknam
     try
     {
         await newClient.GetStream().WriteAsync(frameData);
-        LoggingService.LogInfo($"Sent user list to {newClientNickname}");
+        LoggingService.LogInfo($"Sent user list to {newClientNickname}: {string.Join(", ", allUsers)}");
     }
     catch (Exception ex)
     {

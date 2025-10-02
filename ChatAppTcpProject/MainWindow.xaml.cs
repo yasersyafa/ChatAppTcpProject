@@ -493,35 +493,30 @@ namespace ChatAppTcpProject
                 var usersPart = systemMessage.Substring("Users online:".Length).Trim();
                 
                 // Use Dispatcher to ensure thread safety for UI updates
-                OnlineUsers.Clear();
                 Dispatcher.Invoke(() =>
                 {
+                    OnlineUsers.Clear();
                     
-                    // Add yourself first (current user)
-                    string currentUser = NicknameTextBox?.Text?.Trim() ?? "";
-                    if (!string.IsNullOrWhiteSpace(currentUser))
-                    {
-                        OnlineUsers.Add(currentUser);
-                    }
-                    
-                    // Then add other users
+                    // Add all users from server (server sends complete list including current user)
                     if (!string.IsNullOrWhiteSpace(usersPart))
                     {
                         var users = usersPart.Split(',', StringSplitOptions.RemoveEmptyEntries);
                         foreach (var user in users)
                         {
                             var cleanUser = user.Trim();
-                            if (!string.IsNullOrWhiteSpace(cleanUser) && cleanUser != currentUser)
+                            if (!string.IsNullOrWhiteSpace(cleanUser))
                             {
                                 // Prevent duplicates
                                 if (!OnlineUsers.Contains(cleanUser))
                                 {
                                     OnlineUsers.Add(cleanUser);
+                                    Console.WriteLine($"[DEBUG] Added user to list: '{cleanUser}'");
                                 }
                             }
                         }
                     }
-                    Console.WriteLine($"[DEBUG] Updated user list from 'Users online' message. Count: {OnlineUsers.Count}");
+                    Console.WriteLine($"[DEBUG] Updated user list from 'Users online' message. Total count: {OnlineUsers.Count}");
+                    Console.WriteLine($"[DEBUG] Users: {string.Join(", ", OnlineUsers)}");
                 });
             }
             // Parse "Alice joined the chat"
@@ -541,26 +536,17 @@ namespace ChatAppTcpProject
             // Parse welcome message for first user
             else if (systemMessage.Contains("You are the first user online"))
             {
-                // Use Dispatcher to ensure thread safety for UI updates
-                Dispatcher.Invoke(() =>
-                {
-                    // For first user, just add yourself
-                    OnlineUsers.Clear();
-                    string currentUser = NicknameTextBox?.Text?.Trim() ?? "";
-                    if (!string.IsNullOrWhiteSpace(currentUser))
-                    {
-                        OnlineUsers.Add(currentUser);
-                    }
-                    Console.WriteLine($"[DEBUG] First user online. Count: {OnlineUsers.Count}");
-                });
+                // This message is sent when you're the first user
+                // The user list will be sent separately via "Users online:" message
+                Console.WriteLine($"[DEBUG] First user online message received");
             }
         }
 
         private void ClearUsersList()
         {
-            OnlineUsers.Clear();
             Dispatcher.Invoke(() =>
             {
+                OnlineUsers.Clear();
                 Console.WriteLine($"[DEBUG] Cleared user list. Count: {OnlineUsers.Count}");
             });
         }
