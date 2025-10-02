@@ -454,15 +454,28 @@ namespace ChatAppTcpProject
 
         private void RemoveUserFromList(string username)
         {
+            Console.WriteLine($"[DEBUG] Attempting to remove user: '{username}'");
+            Console.WriteLine($"[DEBUG] Current users before removal: {string.Join(", ", OnlineUsers)}");
+            
             if (OnlineUsers.Contains(username))
             {
                 OnlineUsers.Remove(username);
+                Console.WriteLine($"[DEBUG] Successfully removed user: '{username}'");
             }
+            else
+            {
+                Console.WriteLine($"[DEBUG] User '{username}' not found in list");
+            }
+            
+            Console.WriteLine($"[DEBUG] Current users after removal: {string.Join(", ", OnlineUsers)}");
         }
 
         private void ParseSystemMessage(string systemMessage)
         {
             if (string.IsNullOrWhiteSpace(systemMessage)) return;
+
+            // Debug: Log system messages for troubleshooting
+            Console.WriteLine($"[DEBUG] Parsing system message: '{systemMessage}'");
 
             // Parse "Users online: Alice, Bob, Charlie"
             if (systemMessage.StartsWith("Users online:"))
@@ -494,17 +507,20 @@ namespace ChatAppTcpProject
                         }
                     }
                 }
+                Console.WriteLine($"[DEBUG] Updated user list from 'Users online' message. Count: {OnlineUsers.Count}");
             }
             // Parse "Alice joined the chat"
             else if (systemMessage.Contains(" joined the chat"))
             {
                 var username = systemMessage.Replace(" joined the chat", "").Trim();
+                Console.WriteLine($"[DEBUG] User joined: '{username}'");
                 AddUserToList(username);
             }
             // Parse "Alice left the chat"
             else if (systemMessage.Contains(" left the chat"))
             {
                 var username = systemMessage.Replace(" left the chat", "").Trim();
+                Console.WriteLine($"[DEBUG] User left: '{username}'");
                 RemoveUserFromList(username);
             }
             // Parse welcome message for first user
@@ -517,6 +533,7 @@ namespace ChatAppTcpProject
                 {
                     OnlineUsers.Add(currentUser);
                 }
+                Console.WriteLine($"[DEBUG] First user online. Count: {OnlineUsers.Count}");
             }
         }
 

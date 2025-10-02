@@ -137,6 +137,8 @@ async Task HandleClientAsync(TcpClient client, List<TcpClient> tcpClients)
 
         if (disconnectedUser != "Unknown")
         {
+            LoggingService.LogInfo($"Broadcasting disconnect for user: {disconnectedUser}");
+            
             // Broadcast leave message
             await BroadcastAsync(new ChatMessage
             {
@@ -145,7 +147,11 @@ async Task HandleClientAsync(TcpClient client, List<TcpClient> tcpClients)
                 Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
             }, client, tcpClients);
 
+            // Small delay to ensure leave message is processed first
+            await Task.Delay(100);
+
             // Broadcast updated user list to remaining clients
+            LoggingService.LogInfo($"Broadcasting updated user list after {disconnectedUser} disconnect");
             await BroadcastUpdatedUserListToRemainingClients(tcpClients);
         }
     }
