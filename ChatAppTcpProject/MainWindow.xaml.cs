@@ -186,6 +186,8 @@ namespace ChatAppTcpProject
 
                     Dispatcher.Invoke(() =>
                     {
+                        Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] Received message type: {msg.Type}, Text: {msg.Text}");
+                        
                         switch (msg.Type)
                         {
                             case "sys":
@@ -490,27 +492,32 @@ namespace ChatAppTcpProject
             // === Case: Full user list from server ===
             if (systemMessage.Trim().StartsWith("Users online:", StringComparison.OrdinalIgnoreCase))
             {
+                Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] Detected 'Users online' message");
                 var usersPart = systemMessage.Substring("Users online:".Length).Trim();
+                Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] User list part: '{usersPart}'");
 
                 Dispatcher.Invoke(() =>
                 {
+                    Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] Before clear: {OnlineUsers.Count} users: [{string.Join(", ", OnlineUsers)}]");
                     OnlineUsers.Clear();
+                    Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] After clear: {OnlineUsers.Count} users");
 
                     if (!string.IsNullOrWhiteSpace(usersPart))
                     {
                         var users = usersPart.Split(',', StringSplitOptions.RemoveEmptyEntries);
+                        Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] Split into {users.Length} users");
                         foreach (var user in users.Select(u => u.Trim()))
                         {
                             if (!string.IsNullOrWhiteSpace(user) && !OnlineUsers.Contains(user))
                             {
                                 OnlineUsers.Add(user);
-                                Console.WriteLine($"[DEBUG] Added user: '{user}'");
+                                Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] Added user: '{user}'");
                             }
                         }
                     }
 
-                    Console.WriteLine($"[DEBUG] Updated user list from 'Users online' message. Total: {OnlineUsers.Count}");
-                    Console.WriteLine($"[DEBUG] Users: {string.Join(", ", OnlineUsers)}");
+                    Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] Final user list. Total: {OnlineUsers.Count}");
+                    Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] Users: [{string.Join(", ", OnlineUsers)}]");
                 });
             }
             // === Case: User joined ===
@@ -524,20 +531,23 @@ namespace ChatAppTcpProject
             else if (systemMessage.EndsWith(" left the chat", StringComparison.OrdinalIgnoreCase))
             {
                 var username = systemMessage.Replace(" left the chat", "", StringComparison.OrdinalIgnoreCase).Trim();
-                Console.WriteLine($"[DEBUG] User left: '{username}'");
+                Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] User left: '{username}'");
 
                 Dispatcher.Invoke(() =>
                 {
+                    Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] Before remove: {OnlineUsers.Count} users: [{string.Join(", ", OnlineUsers)}]");
                     var item = OnlineUsers.FirstOrDefault(u => 
                         u.Equals(username, StringComparison.OrdinalIgnoreCase));
                     if (item != null)
                     {
                         OnlineUsers.Remove(item);
-                        Console.WriteLine($"[DEBUG] Removed user: '{username}'");
+                        Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] Successfully removed user: '{username}'");
+                        Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] After remove: {OnlineUsers.Count} users: [{string.Join(", ", OnlineUsers)}]");
                     }
                     else
                     {
-                        Console.WriteLine($"[DEBUG] Tried to remove '{username}' but not found in OnlineUsers");
+                        Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] WARNING: Tried to remove '{username}' but not found in OnlineUsers!");
+                        Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] Current users: [{string.Join(", ", OnlineUsers)}]");
                     }
                 });
             }
