@@ -488,7 +488,7 @@ namespace ChatAppTcpProject
             Console.WriteLine($"[DEBUG] Parsing system message: '{systemMessage}'");
 
             // Parse "Users online: Alice, Bob, Charlie"
-            if (systemMessage.StartsWith("Users online:"))
+            if (systemMessage.Trim().StartsWith("Users online:", StringComparison.OrdinalIgnoreCase))
             {
                 var usersPart = systemMessage.Substring("Users online:".Length).Trim();
                 
@@ -496,7 +496,12 @@ namespace ChatAppTcpProject
                 Dispatcher.Invoke(() =>
                 {
                     OnlineUsers.Clear();
-                    
+                    string currentUser = NicknameTextBox?.Text?.Trim() ?? "";
+                    if (!string.IsNullOrWhiteSpace(currentUser))
+                    {
+                        OnlineUsers.Add(currentUser);
+                    }
+
                     // Add all users from server (server sends complete list including current user)
                     if (!string.IsNullOrWhiteSpace(usersPart))
                     {
