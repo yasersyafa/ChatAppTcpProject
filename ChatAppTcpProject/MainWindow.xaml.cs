@@ -487,63 +487,65 @@ namespace ChatAppTcpProject
             // Debug: Log system messages for troubleshooting
             Console.WriteLine($"[DEBUG] Parsing system message: '{systemMessage}'");
 
-            // Parse "Users online: Alice, Bob, Charlie"
+            // === Case: Full user list from server ===
             if (systemMessage.Trim().StartsWith("Users online:", StringComparison.OrdinalIgnoreCase))
             {
                 var usersPart = systemMessage.Substring("Users online:".Length).Trim();
-                
-                // Use Dispatcher to ensure thread safety for UI updates
+
                 Dispatcher.Invoke(() =>
                 {
                     OnlineUsers.Clear();
-                    string currentUser = NicknameTextBox?.Text?.Trim() ?? "";
-                    if (!string.IsNullOrWhiteSpace(currentUser))
-                    {
-                        OnlineUsers.Add(currentUser);
-                    }
 
-                    // Add all users from server (server sends complete list including current user)
                     if (!string.IsNullOrWhiteSpace(usersPart))
                     {
                         var users = usersPart.Split(',', StringSplitOptions.RemoveEmptyEntries);
-                        foreach (var user in users)
+                        foreach (var user in users.Select(u => u.Trim()))
                         {
-                            var cleanUser = user.Trim();
-                            if (!string.IsNullOrWhiteSpace(cleanUser))
+                            if (!string.IsNullOrWhiteSpace(user) && !OnlineUsers.Contains(user))
                             {
-                                // Prevent duplicates
-                                if (!OnlineUsers.Contains(cleanUser))
-                                {
-                                    OnlineUsers.Add(cleanUser);
-                                    Console.WriteLine($"[DEBUG] Added user to list: '{cleanUser}'");
-                                }
+                                OnlineUsers.Add(user);
+                                Console.WriteLine($"[DEBUG] Added user: '{user}'");
                             }
                         }
                     }
-                    Console.WriteLine($"[DEBUG] Updated user list from 'Users online' message. Total count: {OnlineUsers.Count}");
+
+                    Console.WriteLine($"[DEBUG] Updated user list from 'Users online' message. Total: {OnlineUsers.Count}");
                     Console.WriteLine($"[DEBUG] Users: {string.Join(", ", OnlineUsers)}");
                 });
             }
-            // Parse "Alice joined the chat"
-            else if (systemMessage.Contains(" joined the chat"))
+            // === Case: User joined ===
+            else if (systemMessage.EndsWith(" joined the chat", StringComparison.OrdinalIgnoreCase))
             {
-                var username = systemMessage.Replace(" joined the chat", "").Trim();
+                var username = systemMessage.Replace(" joined the chat", "", StringComparison.OrdinalIgnoreCase).Trim();
                 Console.WriteLine($"[DEBUG] User joined: '{username}'");
                 AddUserToList(username);
             }
-            // Parse "Alice left the chat"
-            else if (systemMessage.Contains(" left the chat"))
+            // === Case: User left ===
+            else if (systemMessage.EndsWith(" left the chat", StringComparison.OrdinalIgnoreCase))
             {
-                var username = systemMessage.Replace(" left the chat", "").Trim();
+                var username = systemMessage.Replace(" left the chat", "", StringComparison.OrdinalIgnoreCase).Trim();
                 Console.WriteLine($"[DEBUG] User left: '{username}'");
-                RemoveUserFromList(username);
+
+                Dispatcher.Invoke(() =>
+                {
+                    var item = OnlineUsers.FirstOrDefault(u => 
+                        u.Equals(username, StringComparison.OrdinalIgnoreCase));
+                    if (item != null)
+                    {
+                        OnlineUsers.Remove(item);
+                        Console.WriteLine($"[DEBUG] Removed user: '{username}'");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[DEBUG] Tried to remove '{username}' but not found in OnlineUsers");
+                    }
+                });
             }
-            // Parse welcome message for first user
-            else if (systemMessage.Contains("You are the first user online"))
+            // === Case: First user online ===
+            else if (systemMessage.Contains("You are the first user online", StringComparison.OrdinalIgnoreCase))
             {
-                // This message is sent when you're the first user
-                // The user list will be sent separately via "Users online:" message
                 Console.WriteLine($"[DEBUG] First user online message received");
+                // tidak perlu apa-apa, nanti server kirim "Users online:" juga
             }
         }
 
