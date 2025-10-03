@@ -1,0 +1,27 @@
+<!-- User Interface Updates for Private Message Functionality -->
+<!-- This file contains the XAML updates needed for the enhanced user list -->
+
+<!-- Replace the UsersList ListBox in MainWindow.xaml (lines 58-71) with this enhanced version: -->
+
+<ListBox x:Name="UsersList" Grid.Row="1" Margin="5" 
+        BorderThickness="0" Background="Transparent"
+        ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+        MouseDoubleClick="UsersList_MouseDoubleClick">
+    <ListBox.ContextMenu>
+        <ContextMenu>
+            <MenuItem Header="Send Private Message" Click="SendPMContextMenu_Click"/>
+            <MenuItem Header="Copy Username" Click="CopyUsernameContextMenu_Click"/>
+        </ContextMenu>
+    </ListBox.ContextMenu>
+    <ListBox.ItemTemplate>
+        <DataTemplate>
+            <StackPanel Orientation="Horizontal" Margin="2">
+                <Ellipse Width="8" Height="8" Fill="{StaticResource StatusConnectedBrush}" 
+                        VerticalAlignment="Center" Margin="0,0,5,0"/>
+                <TextBlock Text="{Binding}" VerticalAlignment="Center" 
+                          FontSize="11" Foreground="{StaticResource ForegroundBrush}"
+                          Cursor="Hand" ToolTip="Double-click or right-click for options"/>
+            </StackPanel>
+        </DataTemplate>
+    </ListBox.ItemTemplate>
+</ListBox>
