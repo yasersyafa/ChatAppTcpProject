@@ -26,14 +26,25 @@ namespace ChatAppTcpProject
 
         // User tracking for online users list
         public ObservableCollection<string> OnlineUsers { get; set; } = new ObservableCollection<string>();
+        
+        // Typing indicator tracking
+        private Dictionary<string, DateTime> _typingUsers = new Dictionary<string, DateTime>();
+        private Timer? _typingTimer;
+        private const int TypingTimeoutMs = 3000; // 3 seconds timeout
+        
+        // Theme management
+        private bool _isDarkTheme = false;
 
         public MainWindow()
         {
             InitializeComponent();
             UsersList.ItemsSource = OnlineUsers;
+            
+            // Initialize typing timer
+            _typingTimer = new Timer(CheckTypingTimeout, null, 1000, 1000);
         }
 
-        private async void Window_Loaded(object sender, RoutedEventArgs e)
+        private void Window_Loaded(object sender, RoutedEventArgs e)
         {
             // optional auto-connect
         }
@@ -151,6 +162,10 @@ namespace ChatAppTcpProject
                 SetStatus("Disconnected", Colors.Gray);
                 AppendSystem("Disconnected.");
                 ClearUsersList();
+                
+                // Clear typing indicators
+                _typingUsers.Clear();
+                UpdateTypingDisplay();
             }
             await Task.CompletedTask;
         }
@@ -171,6 +186,8 @@ namespace ChatAppTcpProject
 
                     Dispatcher.Invoke(() =>
                     {
+                        Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] Received message type: {msg.Type}, Text: {msg.Text}");
+                        
                         switch (msg.Type)
                         {
                             case "sys":
@@ -179,11 +196,26 @@ namespace ChatAppTcpProject
                                 ParseSystemMessage(msg.Text ?? "");
                                 break;
 
+                            case "username_confirmed":
+                                AppendSystem(msg.Text ?? "");
+                                // Update nickname if it was changed
+                                if (msg.From != null && msg.From != NicknameTextBox.Text.Trim())
+                                {
+                                    NicknameTextBox.Text = msg.From;
+                                }
+                                break;
+
                             case "msg":
                                 ChatList.Items.Add($"[{msg.From}] {msg.Text}");
                                 ScrollToEnd();
                                 // Add user to list if not already present
                                 AddUserToList(msg.From ?? "");
+                                // Clear typing indicator for this user since they sent a message
+                                if (msg.From != null)
+                                {
+                                    _typingUsers.Remove(msg.From);
+                                    UpdateTypingDisplay();
+                                }
                                 break;
 
                             case "pm":
@@ -191,6 +223,20 @@ namespace ChatAppTcpProject
                                 ScrollToEnd();
                                 // Add user to list if not already present
                                 AddUserToList(msg.From ?? "");
+                                // Clear typing indicator for this user since they sent a message
+                                if (msg.From != null)
+                                {
+                                    _typingUsers.Remove(msg.From);
+                                    UpdateTypingDisplay();
+                                }
+                                break;
+
+                            case "typing":
+                                HandleTypingIndicator(msg.From ?? "");
+                                break;
+
+                            case "stop_typing":
+                                HandleStopTypingIndicator(msg.From ?? "");
                                 break;
 
                             default:
@@ -233,11 +279,42 @@ namespace ChatAppTcpProject
                 ChatMessage msg;
                 if (text.StartsWith("/w "))
                 {
-                    // Format: /w target pesan
-                    var parts = text.Split(' ', 3, StringSplitOptions.RemoveEmptyEntries);
-                    if (parts.Length < 3)
+                    // Format: /w {target} message atau /w target message
+                    string remainingText = text.Substring(3).Trim();
+                    
+                    string targetUser;
+                    string message;
+                    
+                    if (remainingText.StartsWith("{"))
                     {
-                        AppendSystem("Usage: /w <user> <message>");
+                        // Curly brace nickname format: /w {nickname} message
+                        int endBraceIndex = remainingText.IndexOf('}', 1);
+                        if (endBraceIndex == -1)
+                        {
+                            AppendSystem("Usage: /w {<user>} <message>");
+                            return;
+                        }
+                        
+                        targetUser = remainingText.Substring(1, endBraceIndex - 1).Trim();
+                        message = remainingText.Substring(endBraceIndex + 1).Trim();
+                    }
+                    else
+                    {
+                        // Regular format: /w target message
+                        int firstSpaceIndex = remainingText.IndexOf(' ');
+                        if (firstSpaceIndex == -1)
+                        {
+                            AppendSystem("Usage: /w <user> <message>");
+                            return;
+                        }
+                        
+                        targetUser = remainingText.Substring(0, firstSpaceIndex).Trim();
+                        message = remainingText.Substring(firstSpaceIndex + 1).Trim();
+                    }
+                    
+                    if (string.IsNullOrEmpty(targetUser) || string.IsNullOrEmpty(message))
+                    {
+                        AppendSystem("Usage: /w <user> <message> or /w {<user>} <message>");
                         return;
                     }
 
@@ -245,8 +322,8 @@ namespace ChatAppTcpProject
                     {
                         Type = "pm",
                         From = nick,
-                        To = parts[1],
-                        Text = parts[2],
+                        To = targetUser,
+                        Text = message,
                         Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
                     };
                 }
@@ -319,12 +396,19 @@ namespace ChatAppTcpProject
         }
 
         // === UI Helpers ===
-        private void MessageInput_KeyDown(object sender, KeyEventArgs e)
+        private async void MessageInput_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Shift) == 0)
             {
                 e.Handled = true;
-                _ = SendCurrentMessageAsync();
+                await SendStopTypingIndicatorAsync();
+                await SendCurrentMessageAsync();
+            }
+            else if (e.Key != Key.Enter && e.Key != Key.LeftShift && e.Key != Key.RightShift && 
+                     e.Key != Key.LeftCtrl && e.Key != Key.RightCtrl && e.Key != Key.LeftAlt && e.Key != Key.RightAlt)
+            {
+                // Send typing indicator for any other key press
+                _ = SendTypingIndicatorAsync();
             }
         }
 
@@ -350,6 +434,7 @@ namespace ChatAppTcpProject
 
         private async void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
         {
+            _typingTimer?.Dispose();
             await DisconnectAsync();
         }
 
@@ -362,84 +447,298 @@ namespace ChatAppTcpProject
             string currentUser = NicknameTextBox?.Text?.Trim() ?? "";
             if (username.Equals(currentUser, StringComparison.OrdinalIgnoreCase)) return;
             
-            // Prevent duplicates
-            if (!OnlineUsers.Contains(username))
+            // Use Dispatcher to ensure thread safety for UI updates
+            Dispatcher.Invoke(() =>
             {
-                OnlineUsers.Add(username);
-            }
+                // Prevent duplicates
+                if (!OnlineUsers.Contains(username))
+                {
+                    OnlineUsers.Add(username);
+                    Console.WriteLine($"[DEBUG] Added user to list: '{username}'. Total: {OnlineUsers.Count}");
+                }
+            });
         }
 
         private void RemoveUserFromList(string username)
         {
-            if (OnlineUsers.Contains(username))
+            Console.WriteLine($"[DEBUG] Attempting to remove user: '{username}'");
+            
+            // Use Dispatcher to ensure thread safety for UI updates
+            Dispatcher.Invoke(() =>
             {
-                OnlineUsers.Remove(username);
-            }
+                Console.WriteLine($"[DEBUG] Current users before removal: {string.Join(", ", OnlineUsers)}");
+                
+                if (OnlineUsers.Contains(username))
+                {
+                    OnlineUsers.Remove(username);
+                    Console.WriteLine($"[DEBUG] Successfully removed user: '{username}'. Total: {OnlineUsers.Count}");
+                }
+                else
+                {
+                    Console.WriteLine($"[DEBUG] User '{username}' not found in list");
+                }
+                
+                Console.WriteLine($"[DEBUG] Current users after removal: {string.Join(", ", OnlineUsers)}");
+            });
         }
 
         private void ParseSystemMessage(string systemMessage)
         {
             if (string.IsNullOrWhiteSpace(systemMessage)) return;
 
-            // Parse "Users online: Alice, Bob, Charlie"
-            if (systemMessage.StartsWith("Users online:"))
+            // Debug: Log system messages for troubleshooting
+            Console.WriteLine($"[DEBUG] Parsing system message: '{systemMessage}'");
+
+            // === Case: Full user list from server ===
+            if (systemMessage.Trim().StartsWith("Users online:", StringComparison.OrdinalIgnoreCase))
             {
-                OnlineUsers.Clear();
+                Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] Detected 'Users online' message");
                 var usersPart = systemMessage.Substring("Users online:".Length).Trim();
-                
-                // Add yourself first (current user)
-                string currentUser = NicknameTextBox?.Text?.Trim() ?? "";
-                if (!string.IsNullOrWhiteSpace(currentUser))
+                Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] User list part: '{usersPart}'");
+
+                Dispatcher.Invoke(() =>
                 {
-                    OnlineUsers.Add(currentUser);
-                }
-                
-                // Then add other users
-                if (!string.IsNullOrWhiteSpace(usersPart))
-                {
-                    var users = usersPart.Split(',', StringSplitOptions.RemoveEmptyEntries);
-                    foreach (var user in users)
+                    Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] Before clear: {OnlineUsers.Count} users: [{string.Join(", ", OnlineUsers)}]");
+                    OnlineUsers.Clear();
+                    Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] After clear: {OnlineUsers.Count} users");
+
+                    if (!string.IsNullOrWhiteSpace(usersPart))
                     {
-                        var cleanUser = user.Trim();
-                        if (!string.IsNullOrWhiteSpace(cleanUser) && cleanUser != currentUser)
+                        var users = usersPart.Split(',', StringSplitOptions.RemoveEmptyEntries);
+                        Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] Split into {users.Length} users");
+                        foreach (var user in users.Select(u => u.Trim()))
                         {
-                            // Prevent duplicates
-                            if (!OnlineUsers.Contains(cleanUser))
+                            if (!string.IsNullOrWhiteSpace(user) && !OnlineUsers.Contains(user))
                             {
-                                OnlineUsers.Add(cleanUser);
+                                OnlineUsers.Add(user);
+                                Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] Added user: '{user}'");
                             }
                         }
                     }
-                }
+
+                    Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] Final user list. Total: {OnlineUsers.Count}");
+                    Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] Users: [{string.Join(", ", OnlineUsers)}]");
+                });
             }
-            // Parse "Alice joined the chat"
-            else if (systemMessage.Contains(" joined the chat"))
+            // === Case: User joined ===
+            else if (systemMessage.EndsWith(" joined the chat", StringComparison.OrdinalIgnoreCase))
             {
-                var username = systemMessage.Replace(" joined the chat", "").Trim();
+                var username = systemMessage.Replace(" joined the chat", "", StringComparison.OrdinalIgnoreCase).Trim();
+                Console.WriteLine($"[DEBUG] User joined: '{username}'");
                 AddUserToList(username);
             }
-            // Parse "Alice left the chat"
-            else if (systemMessage.Contains(" left the chat"))
+            // === Case: User left ===
+            else if (systemMessage.EndsWith(" left the chat", StringComparison.OrdinalIgnoreCase))
             {
-                var username = systemMessage.Replace(" left the chat", "").Trim();
-                RemoveUserFromList(username);
-            }
-            // Parse welcome message for first user
-            else if (systemMessage.Contains("You are the first user online"))
-            {
-                // For first user, just add yourself
-                OnlineUsers.Clear();
-                string currentUser = NicknameTextBox?.Text?.Trim() ?? "";
-                if (!string.IsNullOrWhiteSpace(currentUser))
+                var username = systemMessage.Replace(" left the chat", "", StringComparison.OrdinalIgnoreCase).Trim();
+                Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] User left: '{username}'");
+
+                Dispatcher.Invoke(() =>
                 {
-                    OnlineUsers.Add(currentUser);
-                }
+                    Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] Before remove: {OnlineUsers.Count} users: [{string.Join(", ", OnlineUsers)}]");
+                    var item = OnlineUsers.FirstOrDefault(u => 
+                        u.Equals(username, StringComparison.OrdinalIgnoreCase));
+                    if (item != null)
+                    {
+                        OnlineUsers.Remove(item);
+                        Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] Successfully removed user: '{username}'");
+                        Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] After remove: {OnlineUsers.Count} users: [{string.Join(", ", OnlineUsers)}]");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] WARNING: Tried to remove '{username}' but not found in OnlineUsers!");
+                        Console.WriteLine($"[DEBUG] [{DateTime.Now:HH:mm:ss.fff}] Current users: [{string.Join(", ", OnlineUsers)}]");
+                    }
+                });
+            }
+            // === Case: First user online ===
+            else if (systemMessage.Contains("You are the first user online", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine($"[DEBUG] First user online message received");
+                // tidak perlu apa-apa, nanti server kirim "Users online:" juga
             }
         }
 
         private void ClearUsersList()
         {
-            OnlineUsers.Clear();
+            Dispatcher.Invoke(() =>
+            {
+                OnlineUsers.Clear();
+                Console.WriteLine($"[DEBUG] Cleared user list. Count: {OnlineUsers.Count}");
+            });
+        }
+
+        // === Typing Indicator Methods ===
+        private void HandleTypingIndicator(string username)
+        {
+            if (string.IsNullOrWhiteSpace(username)) return;
+            
+            string currentUser = NicknameTextBox?.Text?.Trim() ?? "";
+            if (username.Equals(currentUser, StringComparison.OrdinalIgnoreCase)) return;
+
+            _typingUsers[username] = DateTime.Now;
+            UpdateTypingDisplay();
+            
+            // Ensure timer is running
+            _typingTimer?.Change(1000, 1000);
+        }
+
+        private void HandleStopTypingIndicator(string username)
+        {
+            if (string.IsNullOrWhiteSpace(username)) return;
+            
+            _typingUsers.Remove(username);
+            UpdateTypingDisplay();
+        }
+
+        private void UpdateTypingDisplay()
+        {
+            if (_typingUsers.Count == 0)
+            {
+                // Hide typing status area
+                TypingStatusBorder.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            // Show typing status area and update text
+            TypingStatusBorder.Visibility = Visibility.Visible;
+            
+            if (_typingUsers.Count == 1)
+            {
+                var user = _typingUsers.Keys.First();
+                TypingStatusText.Text = $"{user} is typing";
+            }
+            else if (_typingUsers.Count == 2)
+            {
+                var users = _typingUsers.Keys.ToArray();
+                TypingStatusText.Text = $"{users[0]} and {users[1]} are typing";
+            }
+            else if (_typingUsers.Count > 2)
+            {
+                TypingStatusText.Text = $"{_typingUsers.Count} people are typing";
+            }
+        }
+
+        private void CheckTypingTimeout(object? state)
+        {
+            var now = DateTime.Now;
+            var expiredUsers = _typingUsers
+                .Where(kvp => (now - kvp.Value).TotalMilliseconds > TypingTimeoutMs)
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            if (expiredUsers.Count > 0)
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    foreach (var user in expiredUsers)
+                    {
+                        _typingUsers.Remove(user);
+                    }
+                    UpdateTypingDisplay();
+                });
+            }
+        }
+
+        private async Task SendTypingIndicatorAsync()
+        {
+            if (_stream == null || !_connected) return;
+
+            try
+            {
+                var typingMsg = new ChatMessage
+                {
+                    Type = "typing",
+                    From = NicknameTextBox.Text.Trim(),
+                    Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                };
+
+                string json = JsonSerializer.Serialize(typingMsg);
+                await SendFrameAsync(json);
+            }
+            catch (Exception ex)
+            {
+                AppendSystem($"Failed to send typing indicator: {ex.Message}");
+            }
+        }
+
+        private async Task SendStopTypingIndicatorAsync()
+        {
+            if (_stream == null || !_connected) return;
+
+            try
+            {
+                var stopTypingMsg = new ChatMessage
+                {
+                    Type = "stop_typing",
+                    From = NicknameTextBox.Text.Trim(),
+                    Ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                };
+
+                string json = JsonSerializer.Serialize(stopTypingMsg);
+                await SendFrameAsync(json);
+            }
+            catch (Exception ex)
+            {
+                AppendSystem($"Failed to send stop typing indicator: {ex.Message}");
+            }
+        }
+
+        // === Theme Management Methods ===
+        private void ThemeToggleButton_Click(object sender, RoutedEventArgs e)
+        {
+            ToggleTheme();
+        }
+
+        private void ToggleTheme()
+        {
+            _isDarkTheme = !_isDarkTheme;
+            
+            var app = Application.Current;
+            var resources = app.Resources;
+            
+            // Clear existing merged dictionaries
+            resources.MergedDictionaries.Clear();
+            
+            // Load new theme
+            var newTheme = new ResourceDictionary();
+            if (_isDarkTheme)
+            {
+                newTheme.Source = new Uri("./Themes/DarkTheme.xaml", UriKind.Relative);
+                ThemeToggleButton.Content = "☀️";
+                ThemeToggleButton.ToolTip = "Switch to Light Theme";
+            }
+            else
+            {
+                newTheme.Source = new Uri("./Themes/LightTheme.xaml", UriKind.Relative);
+                ThemeToggleButton.Content = "🌙";
+                ThemeToggleButton.ToolTip = "Switch to Dark Theme";
+            }
+            
+            resources.MergedDictionaries.Add(newTheme);
+            
+            // Update status colors based on current connection state
+            UpdateStatusColor();
+        }
+
+        private void UpdateStatusColor()
+        {
+            if (StatusTextBlock.Text == "Connected")
+            {
+                SetStatus("Connected", Colors.Green);
+            }
+            else if (StatusTextBlock.Text == "Connecting...")
+            {
+                SetStatus("Connecting...", Colors.Orange);
+            }
+            else if (StatusTextBlock.Text == "Failed")
+            {
+                SetStatus("Failed", Colors.Red);
+            }
+            else
+            {
+                SetStatus("Disconnected", Colors.Gray);
+            }
         }
     }
 
