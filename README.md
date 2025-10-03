@@ -25,6 +25,23 @@ cd ChatAppTcpProject && dotnet restore
 
 ---
 
+# 🔥 Running Project
+
+### Server Side
+1. change directory to ServerSide folder. you can type on your terminal `cd ServerSide`
+2. run command `dotnet run` or hot reload, use `dotnet watch run`
+3. get info your internet IP Address, for example `192.168.100.113`
+
+### Client Side
+1. change directory folder to ChatAppTcpProject
+2. run command `dotnet run` or hot reload `dotnet watch run`
+3. type your IP Address of the server side
+4. put your port same as in your server side, example: 8080
+
+> Note: make sure your server and client in the same internet
+
+---
+
 # Project Workflow
 
 1. Make sure don't use main branch for your development
